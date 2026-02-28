@@ -1,0 +1,148 @@
+---
+title: LiveVue
+description: Main module for integrating Vue.js components with Phoenix LiveView
+---
+
+The `LiveVue` module provides seamless integration between Phoenix LiveView and Vue.js components. It exposes the `vue/1` component and the `~VUE` sigil for rendering Vue components within LiveView templates.
+
+## Usage
+
+To use LiveVue in your module:
+
+```elixir
+use LiveVue
+```
+
+This imports the `vue/1` component and `~VUE` sigil into your module.
+
+## vue/1
+
+Renders a Vue component within Phoenix LiveView.
+
+```elixir
+vue(assigns)
+```
+
+<ParamField path="assigns" type="map" required>
+  The component assigns map containing attributes and options
+</ParamField>
+
+### Required attributes
+
+<ParamField path="v-component" type="string" required>
+  Name of the Vue component (e.g., "YourComponent", "directory/Example"). The value is directly passed to the `resolve` function of the `createLiveVue` instance (typically found in `assets/vue/index.js`).
+</ParamField>
+
+### Optional attributes
+
+<ParamField path="id" type="string">
+  Explicit ID of the wrapper component. If not provided, a random one will be generated. Useful to keep ID consistent in development (e.g., "vue-1").
+</ParamField>
+
+<ParamField path="class" type="string">
+  CSS class(es) to apply to the Vue component wrapper (e.g., "my-class" or "my-class another-class").
+</ParamField>
+
+<ParamField path="v-ssr" type="boolean">
+  Whether to render the component on the server. Defaults to the value set in config (default: true).
+</ParamField>
+
+<ParamField path="v-socket" type="Phoenix.LiveView.Socket">
+  LiveView socket, should be provided when rendering inside LiveView.
+</ParamField>
+
+<ParamField path="v-diff" type="boolean">
+  Whether to use differential prop updates. Defaults to the value set in config (default: true).
+</ParamField>
+
+### Event handlers
+
+Vue event handlers can be attached using the `v-on:` prefix:
+
+<ParamField path="v-on:*" type="any">
+  Event handler for Vue events (e.g., `v-on:click`, `v-on:input`).
+</ParamField>
+
+### Props and slots
+
+All other attributes are passed as props to the Vue component. Slots can be passed as regular Phoenix slots.
+
+### Examples
+
+Basic component with props and event handler:
+
+```elixir
+<.vue
+  v-component="MyComponent"
+  message="Hello"
+  v-on:click="handleClick"
+  class="my-component"
+/>
+```
+
+Component with slots and SSR disabled:
+
+```elixir
+<.vue
+  v-component="nested/Component"
+  v-ssr={false}
+  items={@items}
+>
+  <:default>Default slot content</:default>
+  <:named>Named slot content</:named>
+</.vue>
+```
+
+## ~VUE sigil
+
+Inlines a Vue single-file component inside a LiveView. This is the recommended way to write inline Vue components.
+
+```elixir
+sigil_VUE(term, modifiers)
+```
+
+<ParamField path="term" type="binary" required>
+  The Vue single-file component source code as a string.
+</ParamField>
+
+<ParamField path="modifiers" type="list" required>
+  Sigil modifiers (currently must be an empty list).
+</ParamField>
+
+<ResponseField name="return" type="HEEx template">
+  Returns a HEEx template that renders the inlined Vue component.
+</ResponseField>
+
+### Example
+
+```elixir
+~VUE"""
+<template>
+  <div>{{ count }}</div>
+</template>
+
+<script setup>
+import { ref } from 'vue'
+const count = ref(0)
+</script>
+"""
+```
+
+The sigil automatically:
+- Writes the component to `./assets/vue/_build/#{caller.module}.vue`
+- Passes all assigns as props to the component
+- Handles socket and SSR options from `vue_opts` in assigns
+
+## Deprecated
+
+### ~V sigil
+
+<Warning>
+  The `~V` sigil is deprecated. Please use `~VUE` instead.
+</Warning>
+
+```elixir
+sigil_V(term, modifiers)
+```
+
+This sigil has been replaced by `~VUE` and will be removed in a future version.

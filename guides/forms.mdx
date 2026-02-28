@@ -1,0 +1,710 @@
+---
+title: Forms
+description: Build complex forms with server-side validation using useLiveForm composable
+---
+
+This guide covers the `useLiveForm` composable for building complex forms with server-side validation, nested objects, and dynamic arrays in LiveVue.
+
+<Tip>
+New to LiveVue? Check out [Basic usage](/guides/basic-usage) for fundamental patterns before diving into forms.
+</Tip>
+
+## Quick example
+
+Here's how a typical form setup looks with `useLiveForm`:
+
+<CodeGroup>
+```html Vue component
+<script setup lang="ts">
+import { useLiveForm, type Form } from 'live_vue'
+
+type UserForm = {
+  name: string
+  email: string
+  profile: {
+    bio: string
+    skills: string[]
+  }
+}
+
+const props = defineProps<{ form: Form<UserForm> }>()
+
+const form = useLiveForm(() => props.form, {
+  changeEvent: 'validate',     // Send validation requests on changes
+  submitEvent: 'submit',       // Event sent on form submission
+  debounceInMiliseconds: 300   // Debounce validation requests
+})
+
+const nameField = form.field('name')
+const emailField = form.field('email')
+const bioField = form.field('profile.bio')
+const skillsArray = form.fieldArray('profile.skills')
+</script>
+
+<template>
+  <div>
+    <!-- Basic field with validation -->
+    <input
+      v-bind="nameField.inputAttrs.value"
+      :class="{ error: nameField.isTouched.value && nameField.errorMessage.value }"
+    />
+    <div v-if="nameField.errorMessage.value">
+      {{ nameField.errorMessage.value }}
+    </div>
+
+    <!-- Array field with add/remove -->
+    <div v-for="(skillField, index) in skillsArray.fields.value" :key="index">
+      <input v-bind="skillField.inputAttrs.value" placeholder="Enter skill" />
+      <button @click="skillsArray.remove(index)">Remove</button>
+    </div>
+    <button @click="skillsArray.add('')">Add Skill</button>
+
+    <!-- Form actions -->
+    <button @click="form.submit()" :disabled="!form.isValid.value">
+      Submit
+    </button>
+  </div>
+</template>
+```
+
+```elixir LiveView
+defmodule MyAppWeb.UserFormLive do
+  use MyAppWeb, :live_view
+
+  def render(assigns) do
+    ~H"""
+    <.vue form={@form} v-component="UserForm" v-socket={@socket} />
+    """
+  end
+
+  def mount(_params, _session, socket) do
+    changeset = User.changeset(%User{}, %{})
+    {:ok, assign(socket, form: to_form(changeset, as: :user))}
+  end
+
+  def handle_event("validate", %{"user" => params}, socket) do
+    changeset = User.changeset(%User{}, params)
+    {:noreply, assign(socket, form: to_form(changeset, as: :user))}
+  end
+
+  def handle_event("submit", %{"user" => params}, socket) do
+    changeset = User.changeset(%User{}, params)
+    case Repo.insert(changeset) do
+      {:ok, _user} -> {:noreply, redirect(socket, to: "/")}
+      {:error, changeset} -> {:noreply, assign(socket, form: to_form(changeset, as: :user))}
+    end
+  end
+end
+```
+</CodeGroup>
+
+## Why useLiveForm?
+
+Traditional client-side forms present several challenges:
+- **Validation synchronization** between client and server
+- **Complex state management** for nested objects and arrays
+- **Type safety** for deeply nested form structures
+- **Accessibility** and proper ARIA attributes
+- **User experience** patterns like field states and error handling
+
+The `useLiveForm` composable solves these problems by:
+- Providing seamless server-side validation with debouncing
+- Offering type-safe field access for complex structures
+- Managing all form state reactively (dirty, touched, valid)
+- Automatically generating proper input attributes and accessibility features
+- Handling nested objects and dynamic arrays with ease
+
+## Form API reference
+
+### useLiveForm()
+
+Creates a reactive form instance with validation and state management.
+
+```typescript
+function useLiveForm<T extends object>(
+  form: MaybeRefOrGetter<Form<T>>,
+  options?: FormOptions
+): UseLiveFormReturn<T>
+```
+
+**Parameters:**
+- `form` - Reactive reference to the form data from LiveView (typically `() => props.form`)
+- `options` - Configuration object for form behavior
+
+**Options:**
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `changeEvent` | `string \| null` | `null` | Event sent on field changes (set to `null` to disable validation events) |
+| `submitEvent` | `string` | `"submit"` | Event sent on form submission |
+| `debounceInMiliseconds` | `number` | `300` | Debounce delay for change events to reduce server load |
+| `prepareData` | `function` | `(data) => data` | Transform data before sending to server |
+
+**Returns:**
+
+<Accordion title="Form instance properties">
+  **Form-level state:**
+
+  | Property | Type | Description |
+  |----------|------|-------------|
+  | `isValid` | `Ref<boolean>` | No validation errors exist |
+  | `isDirty` | `Ref<boolean>` | Form values differ from initial |
+  | `isTouched` | `Ref<boolean>` | At least one field has been interacted with |
+  | `isValidating` | `Readonly<Ref<boolean>>` | Whether validation requests are in progress |
+  | `submitCount` | `Readonly<Ref<number>>` | Number of submission attempts |
+  | `initialValues` | `Readonly<Ref<T>>` | Original form values for reset |
+
+  **Field factory functions:**
+
+  | Method | Description |
+  |--------|-------------|
+  | `field(path, options?)` | Get a typed field instance for the given path |
+  | `fieldArray(path)` | Get an array field instance for managing dynamic lists |
+
+  **Form actions:**
+
+  | Method | Description |
+  |--------|-------------|
+  | `submit()` | Submit form to server (returns Promise) |
+  | `reset()` | Reset to initial values and clear state |
+</Accordion>
+
+### FormField
+
+Individual form field with reactive state and helpers:
+
+<Accordion title="Field properties">
+  **Reactive state:**
+
+  | Property | Type | Description |
+  |----------|------|-------------|
+  | `value` | `Ref<T>` | Current field value |
+  | `errors` | `Readonly<Ref<string[]>>` | Validation errors from server |
+  | `errorMessage` | `Readonly<Ref<string \| undefined>>` | First error message |
+  | `isValid` | `Ref<boolean>` | No validation errors |
+  | `isDirty` | `Ref<boolean>` | Value differs from initial |
+  | `isTouched` | `Ref<boolean>` | Field has been blurred |
+
+  **Input binding:**
+
+  | Property | Description |
+  |----------|-------------|
+  | `inputAttrs` | Object containing `value`, event handlers, `name`, `id`, and accessibility attributes. Use with `v-bind` |
+
+  **Navigation methods:**
+
+  | Method | Description |
+  |--------|-------------|
+  | `field(key)` | Access nested object field |
+  | `fieldArray(key)` | Access nested array field |
+
+  **Field actions:**
+
+  | Method | Description |
+  |--------|-------------|
+  | `blur()` | Mark field as touched |
+</Accordion>
+
+### FormFieldArray
+
+Array field with additional methods for array manipulation:
+
+<Accordion title="Array field properties">
+  **Array operations:**
+
+  | Method | Description |
+  |--------|-------------|
+  | `add(item?)` | Add new item to array. Returns a promise. |
+  | `remove(index)` | Remove item by index. Returns a promise. |
+  | `move(from, to)` | Move item to different position. Returns a promise. |
+
+  **Reactive array:**
+
+  | Property | Description |
+  |----------|-------------|
+  | `fields` | Array of field instances for iteration (`FormField<T>[]`) |
+
+  **Individual array item access:**
+
+  | Method | Description |
+  |--------|-------------|
+  | `field(path)` | Get individual array item fields (e.g., `field(0)`, `field('[0].name')`) |
+  | `fieldArray(path)` | Get nested array fields within array items |
+</Accordion>
+
+## Working with fields
+
+### Field state
+
+Each field provides reactive state that updates automatically:
+
+```html
+<script setup>
+const nameField = form.field('name')
+
+// Reactive field state
+console.log(nameField.value.value)        // Current value
+console.log(nameField.errors.value)       // Array of error strings
+console.log(nameField.errorMessage.value) // First error or undefined
+console.log(nameField.isValid.value)      // true if no errors
+console.log(nameField.isDirty.value)      // true if changed from initial
+console.log(nameField.isTouched.value)    // true if user interacted
+</script>
+
+<template>
+  <!-- Display field state -->
+  <div class="field-debug">
+    <p>Value: {{ nameField.value.value }}</p>
+    <p>Valid: {{ nameField.isValid.value }}</p>
+    <p>Dirty: {{ nameField.isDirty.value }}</p>
+    <p>Touched: {{ nameField.isTouched.value }}</p>
+    <p>Errors: {{ nameField.errors.value }}</p>
+  </div>
+</template>
+```
+
+### Input binding
+
+The `inputAttrs` property provides all necessary attributes for form inputs:
+
+```html
+<template>
+  <!-- Automatic binding with all attributes -->
+  <input v-bind="nameField.inputAttrs.value" />
+
+  <!-- Error message with proper ID linking -->
+  <div
+    v-if="nameField.errorMessage.value"
+    :id="nameField.inputAttrs.value.id + '-error'"
+    class="error"
+  >
+    {{ nameField.errorMessage.value }}
+  </div>
+</template>
+```
+
+### Checkbox fields
+
+LiveVue supports three checkbox patterns:
+
+<Tabs>
+  <Tab title="Boolean checkbox">
+    For simple true/false fields:
+
+    ```html
+    <script setup>
+    const acceptTerms = form.field('acceptTerms', { type: 'checkbox' })
+    </script>
+
+    <template>
+      <label>
+        <input v-bind="acceptTerms.inputAttrs.value" />
+        I accept the terms and conditions
+      </label>
+    </template>
+    ```
+  </Tab>
+  <Tab title="Single with value">
+    For fields that should have a specific value when checked:
+
+    ```html
+    <script setup>
+    const plan = form.field('plan', { type: 'checkbox', value: 'premium' })
+    </script>
+
+    <template>
+      <label>
+        <input v-bind="plan.inputAttrs.value" />
+        Upgrade to Premium ($9.99/month)
+      </label>
+      <!-- When checked: plan.value = 'premium', when unchecked: plan.value = null -->
+    </template>
+    ```
+  </Tab>
+  <Tab title="Multiple checkboxes">
+    When you create multiple checkboxes for the same field path with different values:
+
+    ```html
+    <script setup>
+    const emailPref = form.field('preferences', { type: 'checkbox', value: 'email' })
+    const smsPref = form.field('preferences', { type: 'checkbox', value: 'sms' })
+    const pushPref = form.field('preferences', { type: 'checkbox', value: 'push' })
+    </script>
+
+    <template>
+      <fieldset>
+        <legend>Notification Preferences</legend>
+        
+        <label>
+          <input v-bind="emailPref.inputAttrs.value" />
+          Email notifications
+        </label>
+        
+        <label>
+          <input v-bind="smsPref.inputAttrs.value" />
+          SMS notifications  
+        </label>
+        
+        <label>
+          <input v-bind="pushPref.inputAttrs.value" />
+          Push notifications
+        </label>
+      </fieldset>
+      <!-- e.g., preferences.value = ['email', 'push'] -->
+    </template>
+    ```
+  </Tab>
+</Tabs>
+
+## Nested fields
+
+### Object navigation
+
+Access nested object fields using dot notation:
+
+```typescript
+type UserProfile = {
+  name: string
+  email: string
+  address: {
+    street: string
+    city: string
+    country: string
+  }
+  preferences: {
+    newsletter: boolean
+    theme: 'light' | 'dark'
+  }
+}
+
+const form = useLiveForm<UserProfile>(/* ... */)
+
+// Access nested fields with full type safety
+const nameField = form.field('name')                           // FormField<string>
+const streetField = form.field('address.street')               // FormField<string>
+const themeField = form.field('preferences.theme')             // FormField<'light' | 'dark'>
+```
+
+### Complex nested structures
+
+```html
+<script setup lang="ts">
+type CompanyForm = {
+  name: string
+  headquarters: {
+    address: {
+      street: string
+      city: string
+      postal_code: string
+    }
+    contact: {
+      phone: string
+      email: string
+    }
+  }
+}
+
+const form = useLiveForm<CompanyForm>(/* ... */)
+
+const companyNameField = form.field('name')
+const hqStreetField = form.field('headquarters.address.street')
+const hqPhoneField = form.field('headquarters.contact.phone')
+</script>
+
+<template>
+  <div>
+    <input v-bind="companyNameField.inputAttrs.value" />
+
+    <fieldset>
+      <legend>Headquarters</legend>
+      <input v-bind="hqStreetField.inputAttrs.value" />
+      <input v-bind="form.field('headquarters.address.city').inputAttrs.value" />
+      <input v-bind="hqPhoneField.inputAttrs.value" />
+    </fieldset>
+  </div>
+</template>
+```
+
+## Array fields
+
+### Basic array operations
+
+```html
+<script setup lang="ts">
+type TagsForm = {
+  title: string
+  tags: string[]
+}
+
+const form = useLiveForm<TagsForm>(/* ... */)
+const tagsArray = form.fieldArray('tags')
+
+const addTag = () => tagsArray.add('')
+const removeTag = (index: number) => tagsArray.remove(index)
+</script>
+
+<template>
+  <div>
+    <fieldset>
+      <legend>Tags</legend>
+      <div v-for="(tagField, index) in tagsArray.fields.value" :key="index">
+        <input v-bind="tagField.inputAttrs.value" placeholder="Enter tag" />
+        <button @click="removeTag(index)">Remove</button>
+      </div>
+      <button @click="addTag()">Add Tag</button>
+    </fieldset>
+  </div>
+</template>
+```
+
+<Tip>
+If calling `add()` on an array field does not add a new item, it often means that your Ecto changeset is filtering out empty or invalid values. Make sure your changeset doesn't consider the value [you're trying to add as empty](https://hexdocs.pm/ecto/Ecto.Changeset.html#cast/4-options), or provide a valid initial value when adding.
+</Tip>
+
+### Complex array structures
+
+Handle arrays of objects with nested properties:
+
+```html
+<script setup lang="ts">
+type ProjectForm = {
+  name: string
+  team_members: Array<{
+    name: string
+    email: string
+    role: string
+    skills: string[]
+  }>
+}
+
+const form = useLiveForm<ProjectForm>(/* ... */)
+const membersArray = form.fieldArray('team_members')
+
+const addMember = () => {
+  membersArray.add({
+    name: '',
+    email: '',
+    role: 'developer',
+    skills: []
+  })
+}
+</script>
+
+<template>
+  <div>
+    <fieldset>
+      <legend>Team Members</legend>
+      <div v-for="(memberField, memberIndex) in membersArray.fields.value" :key="memberIndex">
+        <h4>Member {{ memberIndex + 1 }}</h4>
+        
+        <input v-bind="memberField.field('name').inputAttrs.value" />
+        <input v-bind="memberField.field('email').inputAttrs.value" />
+        
+        <!-- Skills array (nested array) -->
+        <fieldset>
+          <legend>Skills</legend>
+          <div
+            v-for="(skillField, skillIndex) in memberField.fieldArray('skills').fields.value"
+            :key="skillIndex"
+          >
+            <input v-bind="skillField.inputAttrs.value" />
+            <button @click="memberField.fieldArray('skills').remove(skillIndex)">Remove</button>
+          </div>
+          <button @click="memberField.fieldArray('skills').add('')">Add Skill</button>
+        </fieldset>
+
+        <button @click="membersArray.remove(memberIndex)">Remove Member</button>
+      </div>
+
+      <button @click="addMember()">Add Team Member</button>
+    </fieldset>
+  </div>
+</template>
+```
+
+## Server-side integration
+
+### Ecto changeset integration
+
+LiveVue forms work seamlessly with Ecto changesets:
+
+```elixir
+defmodule MyApp.User do
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  schema "users" do
+    field :name, :string
+    field :email, :string
+    field :age, :integer
+
+    embeds_one :profile, Profile do
+      field :bio, :string
+      field :skills, {:array, :string}, default: []
+    end
+  end
+
+  def changeset(user, attrs) do
+    user
+    |> cast(attrs, [:name, :email, :age])
+    |> validate_required([:name, :email])
+    |> validate_format(:email, ~r/@/)
+    |> validate_number(:age, greater_than: 0)
+    |> cast_embed(:profile, with: &profile_changeset/2)
+  end
+
+  defp profile_changeset(profile, attrs) do
+    profile
+    |> cast(attrs, [:bio, :skills])
+    |> validate_length(:bio, max: 500)
+  end
+end
+```
+
+### LiveView form handling
+
+```elixir
+defmodule MyAppWeb.UserFormLive do
+  use MyAppWeb, :live_view
+
+  def handle_event("validate", %{"user" => user_params}, socket) do
+    user = socket.assigns.user || %User{}
+
+    changeset =
+      user
+      |> User.changeset(user_params)
+      # Setting :action is crucial - without it, the changeset won't expose errors
+      |> Map.put(:action, :validate)
+
+    {:noreply, assign(socket, form: to_form(changeset, as: :user))}
+  end
+
+  def handle_event("submit", %{"user" => user_params}, socket) do
+    case save_user(socket.assigns.user, user_params) do
+      {:ok, user} ->
+        socket =
+          socket
+          |> put_flash(:info, "User saved successfully!")
+          |> redirect(to: ~p"/users/#{user}")
+
+        {:noreply, socket}
+
+      {:error, changeset} ->
+        {:noreply, assign(socket, form: to_form(changeset, as: :user))}
+    end
+  end
+end
+```
+
+### Form reset on successful submission
+
+By default, `useLiveForm` does not automatically reset form state after submission. You can opt into automatic form reset by returning `{:reply, %{reset: true}, socket}` from your submit event handler:
+
+```elixir
+def handle_event("submit", %{"contact" => contact_params}, socket) do
+  case create_contact(contact_params) do
+    {:ok, contact} ->
+      socket =
+        socket
+        |> put_flash(:info, "Contact created successfully!")
+        |> assign(:form, to_form(Contact.changeset(%Contact{}, %{}), as: :contact))
+
+      # Tell the Vue component to reset form state
+      {:reply, %{reset: true}, socket}
+
+    {:error, changeset} ->
+      {:noreply, assign(socket, form: to_form(changeset, as: :contact))}
+  end
+end
+```
+
+**What gets reset:**
+- Reset all field values to their current server state
+- Clear all touched states (`isTouched` becomes `false`)
+- Reset submit count to 0
+- Clear dirty states (`isDirty` becomes `false`)
+- Update `initialValues` to match current form values
+
+## Advanced patterns
+
+### Data transformation
+
+Transform form data before sending to the server using `prepareData`:
+
+```html
+<script setup>
+type RawForm = {
+  name: string
+  tags: string
+  price: string
+}
+
+type ProcessedForm = {
+  name: string
+  tags: string[]
+  price: number
+}
+
+const form = useLiveForm<RawForm>(() => props.form, {
+  changeEvent: 'validate',
+  submitEvent: 'submit',
+  prepareData: (data: RawForm): ProcessedForm => {
+    return {
+      name: data.name.trim(),
+      tags: data.tags.split(',').map(tag => tag.trim()).filter(Boolean),
+      price: parseFloat(data.price) || 0
+    }
+  }
+})
+</script>
+```
+
+### Conditional field logic
+
+Show/hide fields based on form state:
+
+```html
+<script setup>
+type UserForm = {
+  account_type: 'personal' | 'business'
+  name: string
+  company_name?: string
+  tax_id?: string
+}
+
+const form = useLiveForm<UserForm>(/* ... */)
+const accountTypeField = form.field('account_type')
+
+const isBusinessAccount = computed(() =>
+  accountTypeField.value.value === 'business'
+)
+
+// Clear conditional fields when they become hidden
+watch(isBusinessAccount, (isBusiness) => {
+  if (!isBusiness) {
+    form.field('company_name').value.value = ''
+    form.field('tax_id').value.value = ''
+  }
+})
+</script>
+
+<template>
+  <div>
+    <select v-bind="accountTypeField.inputAttrs.value">
+      <option value="personal">Personal</option>
+      <option value="business">Business</option>
+    </select>
+
+    <!-- Business-only fields -->
+    <div v-if="isBusinessAccount">
+      <input v-bind="form.field('company_name').inputAttrs.value" />
+      <input v-bind="form.field('tax_id').inputAttrs.value" />
+    </div>
+  </div>
+</template>
+```
+
+## Next steps
+
+- [Configuration](/guides/configuration) for advanced setup and customization options
+- [Basic usage](/guides/basic-usage) for fundamental patterns

@@ -1,0 +1,645 @@
+---
+title: Form composables
+description: useLiveForm, useField, and useArrayField for server-side form validation with LiveView
+---
+
+LiveVue provides comprehensive form handling with server-side validation, nested objects, and dynamic arrays through the `useLiveForm` composable and related utilities.
+
+## useLiveForm
+
+Creates a reactive form instance that synchronizes with LiveView's form state and provides type-safe field access.
+
+```typescript
+function useLiveForm<T extends object>(
+  form: MaybeRefOrGetter<Form<T>>,
+  options?: FormOptions
+): UseLiveFormReturn<T>
+```
+
+### Parameters
+
+<ParamField path="form" type="MaybeRefOrGetter<Form<T>>" required>
+  Reactive reference to the form data from LiveView (typically `() => props.form`)
+</ParamField>
+
+<ParamField path="options" type="FormOptions">
+  Configuration options
+  
+  <Expandable title="properties">
+    <ParamField path="changeEvent" type="string | null" default="null">
+      Event name to send to the server when form values change. Set to `null` to disable validation events.
+    </ParamField>
+    
+    <ParamField path="submitEvent" type="string" default="'submit'">
+      Event name to send to the server when form is submitted
+    </ParamField>
+    
+    <ParamField path="debounceInMiliseconds" type="number" default="300">
+      Delay in milliseconds before sending change events to reduce server load
+    </ParamField>
+    
+    <ParamField path="prepareData" type="function">
+      Function to transform form data before sending to server
+      
+      ```typescript
+      (data: any) => any
+      ```
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+### Returns
+
+<ResponseField name="UseLiveFormReturn" type="object">
+  <Expandable title="form-level state">
+    <ResponseField name="isValid" type="Ref<boolean>">
+      Whether the form has no validation errors
+    </ResponseField>
+    
+    <ResponseField name="isDirty" type="Ref<boolean>">
+      Whether the form values differ from initial values
+    </ResponseField>
+    
+    <ResponseField name="isTouched" type="Ref<boolean>">
+      Whether any field has been touched or form has been submitted
+    </ResponseField>
+    
+    <ResponseField name="isValidating" type="Readonly<Ref<boolean>>">
+      Whether a validation request is currently pending
+    </ResponseField>
+    
+    <ResponseField name="submitCount" type="Readonly<Ref<number>>">
+      Number of times the form has been submitted
+    </ResponseField>
+    
+    <ResponseField name="initialValues" type="Readonly<T>">
+      The initial form values (read-only)
+    </ResponseField>
+  </Expandable>
+  
+  <Expandable title="field factory functions">
+    <ResponseField name="field" type="function">
+      Get a typed field instance for the given path
+      
+      ```typescript
+      <P extends PathsToStringProps<T>>(
+        path: P,
+        options?: FieldOptions
+      ): FormField<PathValue<T, P>>
+      ```
+    </ResponseField>
+    
+    <ResponseField name="fieldArray" type="function">
+      Get an array field instance for managing dynamic lists
+      
+      ```typescript
+      <P extends PathsToStringProps<T>>(
+        path: P
+      ): FormFieldArray<U>
+      ```
+    </ResponseField>
+  </Expandable>
+  
+  <Expandable title="form actions">
+    <ResponseField name="submit" type="function">
+      Submit the form to the server. Returns a Promise that resolves with the server response.
+      
+      ```typescript
+      () => Promise<Form<T>>
+      ```
+    </ResponseField>
+    
+    <ResponseField name="reset" type="function">
+      Reset form to initial state
+      
+      ```typescript
+      () => void
+      ```
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Usage
+
+```html
+<script setup>
+import { useLiveForm } from 'live_vue'
+import type { Form } from 'live_vue'
+
+interface UserForm {
+  name: string
+  email: string
+  age: number
+}
+
+interface Props {
+  form: Form<UserForm>
+}
+
+const props = defineProps<Props>()
+
+const form = useLiveForm(() => props.form, {
+  changeEvent: 'validate',
+  submitEvent: 'submit',
+  debounceInMiliseconds: 300
+})
+
+const nameField = form.field('name')
+const emailField = form.field('email')
+
+const handleSubmit = async () => {
+  const result = await form.submit()
+  console.log('Form submitted:', result)
+}
+</script>
+
+<template>
+  <form @submit.prevent="handleSubmit">
+    <div>
+      <label :for="nameField.inputAttrs.value.id">Name</label>
+      <input v-bind="nameField.inputAttrs.value" />
+      <span v-if="nameField.errorMessage.value" class="error">
+        {{ nameField.errorMessage.value }}
+      </span>
+    </div>
+    
+    <div>
+      <label :for="emailField.inputAttrs.value.id">Email</label>
+      <input v-bind="emailField.inputAttrs.value" type="email" />
+      <span v-if="emailField.errorMessage.value" class="error">
+        {{ emailField.errorMessage.value }}
+      </span>
+    </div>
+    
+    <button type="submit" :disabled="!form.isValid.value || form.isValidating.value">
+      {{ form.isValidating.value ? 'Validating...' : 'Submit' }}
+    </button>
+  </form>
+</template>
+```
+
+### Type definitions
+
+<AccordionGroup>
+  <Accordion title="Form<T>">
+    Base form interface representing the data coming from the server.
+    
+    ```typescript
+    interface Form<T extends object> {
+      /** Unique identifier for the form */
+      name: string
+      /** Form field values */
+      values: T
+      /** Validation errors for form fields */
+      errors: FormErrors<T>
+      /** Whether the form is valid */
+      valid: boolean
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="FormErrors<T>">
+    Maps form field structure to a corresponding structure for validation errors.
+    
+    ```typescript
+    type FormErrors<T extends object> = {
+      [K in keyof T]?: T[K] extends object ? FormErrors<T[K]> : string[]
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="FormField<T>">
+    Represents a single form field with reactive state and input binding helpers.
+    
+    ```typescript
+    interface FormField<T> {
+      // Reactive state
+      value: Ref<T>
+      errors: Readonly<Ref<string[]>>
+      errorMessage: Readonly<Ref<string | undefined>>
+      isValid: Ref<boolean>
+      isDirty: Ref<boolean>
+      isTouched: Ref<boolean>
+      
+      // Input binding helper
+      inputAttrs: Readonly<Ref<{
+        value: T
+        onInput: (event: Event) => void
+        onBlur: () => void
+        name: string
+        id: string
+        type?: string
+        checked?: boolean
+        "aria-invalid": boolean
+        "aria-describedby"?: string
+      }>>
+      
+      // Type-safe sub-field creation
+      field<K extends keyof T>(key: K, options?: FieldOptions): ...
+      fieldArray<K extends keyof T>(key: K): ...
+      
+      // Field actions
+      blur: () => void
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## FormField
+
+A `FormField` instance represents a single form field with reactive state and input binding helpers. You typically create fields using `form.field(path)` from `useLiveForm`.
+
+### Properties
+
+<ResponseField name="value" type="Ref<T>">
+  The current field value (reactive)
+</ResponseField>
+
+<ResponseField name="errors" type="Readonly<Ref<string[]>>">
+  Array of error messages for this field (read-only, from backend)
+</ResponseField>
+
+<ResponseField name="errorMessage" type="Readonly<Ref<string | undefined>>">
+  The first error message, or `undefined` if no errors (read-only)
+</ResponseField>
+
+<ResponseField name="isValid" type="Ref<boolean>">
+  Whether the field has no validation errors
+</ResponseField>
+
+<ResponseField name="isDirty" type="Ref<boolean>">
+  Whether the field value differs from its initial value
+</ResponseField>
+
+<ResponseField name="isTouched" type="Ref<boolean>">
+  Whether the field has been focused and blurred
+</ResponseField>
+
+<ResponseField name="inputAttrs" type="Readonly<Ref<object>>">
+  Computed attributes to bind to an input element using `v-bind`. Includes:
+  - `value`: Current field value
+  - `onInput`: Input event handler
+  - `onBlur`: Blur event handler
+  - `name`: Field path
+  - `id`: Sanitized field ID
+  - `type`: Input type (if specified in options)
+  - `checked`: For checkboxes/radios
+  - `aria-invalid`: Accessibility attribute
+  - `aria-describedby`: Links to error message element
+</ResponseField>
+
+### Methods
+
+<ResponseField name="field" type="function">
+  Create a sub-field for nested objects
+  
+  ```typescript
+  field<K extends keyof T>(key: K, options?: FieldOptions): FormField<T[K]>
+  ```
+</ResponseField>
+
+<ResponseField name="fieldArray" type="function">
+  Create a sub-field array for nested arrays
+  
+  ```typescript
+  fieldArray<K extends keyof T>(key: K): FormFieldArray<U>
+  ```
+</ResponseField>
+
+<ResponseField name="blur" type="function">
+  Mark the field as touched (called automatically by `inputAttrs.onBlur`)
+  
+  ```typescript
+  blur(): void
+  ```
+</ResponseField>
+
+### Field options
+
+<ParamField path="type" type="string">
+  HTML input type - supports any valid input type ("text", "email", "number", "checkbox", "radio", etc.)
+</ParamField>
+
+<ParamField path="value" type="any">
+  For checkbox/radio: the value this input represents when selected
+</ParamField>
+
+### Checkbox handling
+
+```html
+<script setup>
+const form = useLiveForm(() => props.form)
+
+// Single checkbox (boolean)
+const agreeField = form.field('agree', { type: 'checkbox' })
+
+// Multiple checkboxes (array)
+const interestsField = form.field('interests') // interests: string[]
+</script>
+
+<template>
+  <!-- Single checkbox -->
+  <label>
+    <input v-bind="agreeField.inputAttrs.value" />
+    I agree to terms
+  </label>
+  
+  <!-- Multiple checkboxes -->
+  <label>
+    <input v-bind="form.field('interests', { type: 'checkbox', value: 'vue' }).inputAttrs.value" />
+    Vue.js
+  </label>
+  <label>
+    <input v-bind="form.field('interests', { type: 'checkbox', value: 'react' }).inputAttrs.value" />
+    React
+  </label>
+</template>
+```
+
+---
+
+## FormFieldArray
+
+A `FormFieldArray` extends `FormField` with array-specific methods for managing dynamic lists. You create array fields using `form.fieldArray(path)`.
+
+### Additional properties
+
+<ResponseField name="fields" type="Readonly<Ref<FormField<T>[]>>">
+  Reactive array of field instances for iteration. Each item in the array is a `FormField` instance.
+</ResponseField>
+
+### Array methods
+
+<ResponseField name="add" type="function">
+  Add a new item to the array. Returns a Promise that resolves when the server validates the change.
+  
+  ```typescript
+  (item?: Partial<T>) => Promise<any>
+  ```
+</ResponseField>
+
+<ResponseField name="remove" type="function">
+  Remove an item at the specified index. Returns a Promise that resolves when the server validates the change.
+  
+  ```typescript
+  (index: number) => Promise<any>
+  ```
+</ResponseField>
+
+<ResponseField name="move" type="function">
+  Move an item from one index to another. Returns a Promise that resolves when the server validates the change.
+  
+  ```typescript
+  (from: number, to: number) => Promise<any>
+  ```
+</ResponseField>
+
+### Field access methods
+
+<ResponseField name="field" type="function">
+  Get a field for a specific array item or nested path
+  
+  ```typescript
+  // By index
+  field(0, options?)         // Returns FormField for items[0]
+  
+  // By path
+  field('[0]', options?)     // Returns FormField for items[0]
+  field('[0].name', options?) // Returns FormField for items[0].name
+  ```
+</ResponseField>
+
+<ResponseField name="fieldArray" type="function">
+  Get a nested array field
+  
+  ```typescript
+  fieldArray('[0].tags')     // Returns FormFieldArray for items[0].tags
+  ```
+</ResponseField>
+
+### Usage
+
+```html
+<script setup>
+import { useLiveForm } from 'live_vue'
+
+interface TodoForm {
+  todos: Array<{
+    text: string
+    completed: boolean
+  }>
+}
+
+const props = defineProps<{ form: Form<TodoForm> }>()
+const form = useLiveForm(() => props.form, {
+  changeEvent: 'validate',
+  submitEvent: 'save'
+})
+
+const todosArray = form.fieldArray('todos')
+
+const addTodo = () => {
+  todosArray.add({ text: '', completed: false })
+}
+</script>
+
+<template>
+  <div>
+    <div v-for="(todoField, index) in todosArray.fields.value" :key="index">
+      <input v-bind="todoField.field('text').inputAttrs.value" placeholder="Todo text" />
+      <input v-bind="todoField.field('completed', { type: 'checkbox' }).inputAttrs.value" />
+      <button @click="todosArray.remove(index)">Remove</button>
+    </div>
+    
+    <button @click="addTodo">Add Todo</button>
+  </div>
+</template>
+```
+
+### Nested arrays
+
+```html
+<script setup>
+interface FormData {
+  users: Array<{
+    name: string
+    tags: string[]
+  }>
+}
+
+const form = useLiveForm(() => props.form)
+const usersArray = form.fieldArray('users')
+</script>
+
+<template>
+  <div v-for="(userField, userIndex) in usersArray.fields.value" :key="userIndex">
+    <input v-bind="userField.field('name').inputAttrs.value" />
+    
+    <!-- Nested array -->
+    <div v-for="(tagField, tagIndex) in userField.fieldArray('tags').fields.value" :key="tagIndex">
+      <input v-bind="tagField.inputAttrs.value" />
+      <button @click="userField.fieldArray('tags').remove(tagIndex)">Remove Tag</button>
+    </div>
+    
+    <button @click="userField.fieldArray('tags').add('')">Add Tag</button>
+    <button @click="usersArray.remove(userIndex)">Remove User</button>
+  </div>
+</template>
+```
+
+---
+
+## useField
+
+Hook to access form fields from an injected form instance. This is useful for creating reusable form components that don't need direct access to the form instance.
+
+```typescript
+function useField<T = any>(path: string, options?: FieldOptions): FormField<T>
+```
+
+### Parameters
+
+<ParamField path="path" type="string" required>
+  The field path (e.g., "name", "user.email", "items[0].title")
+</ParamField>
+
+<ParamField path="options" type="FieldOptions">
+  Field options (type, value for checkboxes)
+</ParamField>
+
+### Returns
+
+<ResponseField name="FormField<T>" type="object">
+  A FormField instance for the specified path
+</ResponseField>
+
+### Usage
+
+```html
+<!-- ParentComponent.vue -->
+<script setup>
+import { useLiveForm } from 'live_vue'
+import TextInput from './TextInput.vue'
+
+const form = useLiveForm(() => props.form, {
+  changeEvent: 'validate'
+})
+// Form instance is automatically provided to child components
+</script>
+
+<template>
+  <form>
+    <TextInput path="name" label="Name" />
+    <TextInput path="email" label="Email" />
+  </form>
+</template>
+```
+
+```html
+<!-- TextInput.vue -->
+<script setup>
+import { useField } from 'live_vue'
+
+interface Props {
+  path: string
+  label: string
+}
+
+const props = defineProps<Props>()
+const field = useField(props.path)
+</script>
+
+<template>
+  <div class="field">
+    <label :for="field.inputAttrs.value.id">{{ label }}</label>
+    <input v-bind="field.inputAttrs.value" />
+    <span v-if="field.errorMessage.value" class="error">
+      {{ field.errorMessage.value }}
+    </span>
+  </div>
+</template>
+```
+
+### Error handling
+
+Throws an error if used outside a component where a form has been provided:
+
+```
+useField() can only be used inside components where a form has been provided.
+Make sure to use useLiveForm() in a parent component.
+```
+
+---
+
+## useArrayField
+
+Hook to access form array fields from an injected form instance.
+
+```typescript
+function useArrayField<T = any>(path: string): FormFieldArray<T>
+```
+
+### Parameters
+
+<ParamField path="path" type="string" required>
+  The field path for an array field (e.g., "items", "user.tags", "posts[0].comments")
+</ParamField>
+
+### Returns
+
+<ResponseField name="FormFieldArray<T>" type="object">
+  A FormFieldArray instance for the specified path
+</ResponseField>
+
+### Usage
+
+```html
+<!-- ParentComponent.vue -->
+<script setup>
+import { useLiveForm } from 'live_vue'
+import TagList from './TagList.vue'
+
+const form = useLiveForm(() => props.form)
+</script>
+
+<template>
+  <form>
+    <TagList path="tags" />
+  </form>
+</template>
+```
+
+```html
+<!-- TagList.vue -->
+<script setup>
+import { useArrayField } from 'live_vue'
+
+interface Props {
+  path: string
+}
+
+const props = defineProps<Props>()
+const tagsArray = useArrayField<string>(props.path)
+</script>
+
+<template>
+  <div>
+    <div v-for="(tagField, index) in tagsArray.fields.value" :key="index">
+      <input v-bind="tagField.inputAttrs.value" />
+      <button @click="tagsArray.remove(index)">Remove</button>
+    </div>
+    <button @click="tagsArray.add('')">Add Tag</button>
+  </div>
+</template>
+```
+
+### Error handling
+
+Throws an error if used outside a component where a form has been provided:
+
+```
+useArrayField() can only be used inside components where a form has been provided.
+Make sure to use useLiveForm() in a parent component.
+```

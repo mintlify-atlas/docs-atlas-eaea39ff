@@ -1,0 +1,143 @@
+---
+title: Installation
+description: Install LiveVue in your Phoenix project with automated setup via Igniter
+---
+
+LiveVue replaces `esbuild` with [Vite](https://vitejs.dev/) for both client-side code and SSR to achieve an amazing development experience.
+
+## Why Vite?
+
+- Vite provides best-in-class Hot Module Replacement and offers [many benefits](https://vitejs.dev/guide/why#why-vite)
+- `esbuild` package doesn't support plugins, so we would need a custom build process anyway
+- In production, we use [elixir-nodejs](https://github.com/revelrylabs/elixir-nodejs) for SSR
+
+<Tip>
+If you don't need SSR, you can easily disable it with one line of configuration.
+</Tip>
+
+## Prerequisites
+
+Before installing LiveVue, ensure you have:
+
+- **Node.js** (version 19 or later recommended)
+- **Elixir** 1.13+
+- **Phoenix** 1.8+ (required for Igniter installer)
+- **Igniter** installed (see below)
+
+## Quick start (recommended)
+
+### Installing Igniter
+
+First, install the Igniter archive:
+
+```bash
+mix archive.install hex igniter_new
+```
+
+### New project
+
+Create a new Phoenix project with LiveVue pre-installed:
+
+```bash
+mix igniter.new my_app --with phx.new --install live_vue
+```
+
+This command will:
+
+<Steps>
+  <Step title="Create Phoenix project">
+    Creates a new Phoenix project using `phx.new`
+  </Step>
+  <Step title="Install and configure LiveVue">
+    Automatically installs and configures LiveVue
+  </Step>
+  <Step title="Set up tooling">
+    Sets up Vite, Vue, TypeScript, and all necessary files
+  </Step>
+  <Step title="Create demo component">
+    Creates a working Vue demo component to get you started
+  </Step>
+</Steps>
+
+### Existing project
+
+To add LiveVue to an existing Phoenix 1.8+ project:
+
+```bash
+mix igniter.install live_vue
+```
+
+This will automatically configure your project with all necessary LiveVue setup.
+
+<Warning>
+**Important limitations:**
+
+- **Phoenix 1.8+ required**: The Igniter installer depends on `phoenix_vite` and modern Phoenix features only available in Phoenix 1.8+
+- **Pre-Igniter LiveVue upgrade not supported**: If you have an existing LiveVue installation from before the Igniter installer was introduced, upgrading via `mix igniter.install live_vue` is not supported due to significant changes in the installation process. However, you should be able to bump the version of LiveVue in your `mix.exs` file and everything should still work.
+- **LiveVue itself works with Phoenix 1.7**: While the automated installer requires Phoenix 1.8+, the LiveVue library itself is compatible with Phoenix 1.7 if installed manually
+</Warning>
+
+## Verifying installation
+
+After installation, verify everything is set up correctly:
+
+<Steps>
+  <Step title="Install dependencies">
+    ```bash
+    mix deps.get
+    npm install
+    ```
+  </Step>
+  <Step title="Start the development server">
+    ```bash
+    mix phx.server
+    ```
+  </Step>
+  <Step title="Check the output">
+    You should see Vite building your assets and the Phoenix server starting successfully.
+  </Step>
+</Steps>
+
+## What gets installed
+
+The Igniter installer automatically configures:
+
+- **Vite** for asset bundling
+- **Vue 3** with TypeScript support
+- **LiveVue components** and utilities
+- **SSR configuration** for server-side rendering
+- **Tailwind CSS** integration for Vue files
+- **PostCSS** configuration
+- **Demo Vue component** to test your setup
+
+## Manual installation
+
+<Warning>
+**Outdated manual instructions**
+
+Manual installation instructions are currently outdated and don't work with current versions of dependencies (Tailwind, Phoenix, etc.).
+
+**We strongly recommend using the Igniter installation above.**
+</Warning>
+
+The manual installation process involves many complex steps including:
+
+- Configuring Vite and Vue dependencies
+- Setting up TypeScript and PostCSS
+- Updating Phoenix configuration files
+- Configuring Tailwind for Vue files
+- Setting up SSR for production
+- And many more manual steps...
+
+For the current version, please use the Igniter installation method.
+
+## Next steps
+
+<Card
+  title="Quick start guide"
+  icon="play"
+  iconType="solid"
+  href="/quickstart"
+>
+  Now that you have LiveVue installed, create your first Vue component
+</Card>

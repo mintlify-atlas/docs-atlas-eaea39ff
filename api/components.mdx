@@ -1,0 +1,85 @@
+---
+title: LiveVue.Components
+description: Macros to improve the developer experience of crossing the LiveView/Vue boundary
+---
+
+The `LiveVue.Components` module provides macros that generate functions local to your module for rendering Vue components. This improves the developer experience by allowing you to call Vue components as Elixir functions.
+
+## Usage
+
+Use this module with the `vue_root` option to specify directories containing your Vue components:
+
+```elixir
+use LiveVue.Components, vue_root: ["./assets/vue", "./lib/my_app_web"]
+```
+
+<ParamField path="vue_root" type="string | list(string)">
+  Path or list of paths to directories containing Vue components. The macro will scan for `*.vue` files in these directories (including subdirectories) and generate corresponding functions.
+  
+  Default: `["./assets/vue"]`
+</ParamField>
+
+<Warning>
+  Glob patterns are not supported in `:vue_root`. Use a list of explicit directory paths instead.
+</Warning>
+
+## Generated functions
+
+For each `*.vue` file found in the specified directories, the macro generates a function with the same name as the component file (without the `.vue` extension).
+
+```elixir
+component_name(assigns)
+```
+
+<ParamField path="assigns" type="map" required>
+  The component assigns map containing attributes and props to pass to the Vue component.
+</ParamField>
+
+<ResponseField name="return" type="HEEx template">
+  Returns the rendered Vue component via `LiveVue.vue/1`.
+</ResponseField>
+
+## Example
+
+Given the following Vue components in `./assets/vue`:
+
+```
+assets/vue/
+├── Counter.vue
+├── UserProfile.vue
+└── components/
+    └── Button.vue
+```
+
+Using the macro:
+
+```elixir
+defmodule MyAppWeb.ExampleLive do
+  use Phoenix.LiveView
+  use LiveVue.Components, vue_root: "./assets/vue"
+
+  def render(assigns) do
+    ~H"""
+    <.Counter count={@count} v-on:increment="increment" />
+    <.UserProfile user={@user} />
+    <.Button label="Click me" />
+    """
+  end
+end
+```
+
+This generates three functions:
+- `Counter/1`
+- `UserProfile/1`
+- `Button/1`
+
+Each function internally calls `LiveVue.vue/1` with the appropriate `v-component` attribute set.
+
+## Implementation details
+
+The macro:
+1. Scans all `*.vue` files in the specified `vue_root` directories
+2. Extracts the base filename (without extension) for each component
+3. Generates a function with that name that sets the `v-component` attribute and calls `LiveVue.vue/1`
+
+This allows you to use Vue components as if they were native Phoenix function components, improving autocomplete support and reducing boilerplate.

@@ -1,0 +1,149 @@
+---
+title: Introduction
+description: Vue inside Phoenix LiveView with seamless end-to-end reactivity
+---
+
+<img
+  src="https://github.com/Valian/live_vue/blob/main/live_vue_logo_rounded.png?raw=true"
+  alt="LiveVue Logo"
+  height="256"
+/>
+
+Vue inside Phoenix LiveView with seamless end-to-end reactivity.
+
+## Why LiveVue?
+
+Phoenix LiveView makes it possible to create rich, interactive web apps without writing JavaScript. But once you need to do anything even slightly complex on the client-side, you'll end up writing lots of imperative, hard-to-maintain hooks.
+
+LiveVue allows you to create hybrid apps, where part of the session state is on the server and part on the client.
+
+### Use LiveVue when:
+
+- Your hooks are starting to look like jQuery
+- You have complex local state to manage
+- You'd like to use the massive Vue ecosystem
+- You want transitions, graphs, and rich UI interactions
+- You simply love Vue
+
+## Features
+
+<CardGroup cols={2}>
+  <Card title="End-to-end reactivity" icon="bolt" iconType="solid">
+    Seamless data flow between Phoenix LiveView and Vue components with automatic synchronization
+  </Card>
+  <Card title="One-line install" icon="wand-magic-sparkles" iconType="solid">
+    Automated setup via Igniter installer gets you started in seconds
+  </Card>
+  <Card title="Server-side rendering" icon="server" iconType="solid">
+    SSR support for Vue components with fast initial page loads and better SEO
+  </Card>
+  <Card title="Lazy-loading components" icon="gauge-high" iconType="solid">
+    Load Vue components on-demand for optimal performance
+  </Card>
+  <Card title="Efficient props diffing" icon="code-compare" iconType="solid">
+    Only changed data is sent over WebSocket using JSON Patch
+  </Card>
+  <Card title="~VUE sigil" icon="code" iconType="solid">
+    Alternative LiveView DSL with VS Code syntax highlighting
+  </Card>
+  <Card title="Phoenix Streams support" icon="stream" iconType="solid">
+    Efficient patches for list operations with stream() support
+  </Card>
+  <Card title="Tailwind support" icon="palette" iconType="solid">
+    Full integration with Tailwind CSS for modern styling
+  </Card>
+  <Card title="Slot interoperability" icon="puzzle-piece" iconType="solid">
+    Use Phoenix slots seamlessly within Vue components
+  </Card>
+  <Card title="File upload composable" icon="cloud-arrow-up" iconType="solid">
+    useLiveUpload() for seamless Vue integration with LiveView uploads
+  </Card>
+  <Card title="Form handling" icon="file-lines" iconType="solid">
+    useLiveForm() with server-side validation via Ecto changesets
+  </Card>
+  <Card title="Amazing DX" icon="rocket" iconType="solid">
+    Powered by Vite for instant Hot Module Replacement
+  </Card>
+</CardGroup>
+
+## Quick example
+
+Here's how easy it is to use Vue components in LiveView:
+
+<CodeGroup>
+
+```vue Counter.vue
+<script setup lang="ts">
+import {ref} from "vue"
+
+// props are passed from LiveView
+const props = defineProps<{count: number}>()
+
+// local state
+const diff = ref(1)
+</script>
+
+<template>
+  Current count: {{ props.count }}
+  <label>Diff: </label>
+  <input v-model.number="diff" type="range" min="1" max="10" />
+
+  <button phx-click="inc" :phx-value-diff="diff">
+    Increase counter by {{ diff }}
+  </button>
+</template>
+```
+
+```elixir counter_live.ex
+defmodule MyAppWeb.CounterLive do
+  use MyAppWeb, :live_view
+
+  def render(assigns) do
+    ~H"""
+    <.vue count={@count} v-component="Counter" v-socket={@socket} />
+    """
+  end
+
+  def mount(_params, _session, socket) do
+    {:ok, assign(socket, count: 0)}
+  end
+
+  def handle_event("inc", %{"diff" => value}, socket) do
+    {:noreply, update(socket, :count, &(&1 + value))}
+  end
+end
+```
+
+</CodeGroup>
+
+## Get started
+
+<CardGroup cols={2}>
+  <Card
+    title="Installation"
+    icon="download"
+    iconType="solid"
+    href="/installation"
+  >
+    Install LiveVue in your Phoenix project with one command
+  </Card>
+  <Card
+    title="Quick start"
+    icon="play"
+    iconType="solid"
+    href="/quickstart"
+  >
+    Build your first Vue component in minutes
+  </Card>
+</CardGroup>
+
+## Resources
+
+- [Live Examples](https://livevue.skalecki.dev) - Interactive demos
+- [HexDocs](https://hexdocs.pm/live_vue) - API documentation
+- [GitHub](https://github.com/Valian/live_vue) - Source code
+- [Phoenix LiveView](https://github.com/phoenixframework/phoenix_live_view) - Official LiveView docs
+
+<Note>
+LiveVue is inspired by [LiveSvelte](https://github.com/woutdp/live_svelte). Both projects solve the same problem with different frontend frameworks.
+</Note>

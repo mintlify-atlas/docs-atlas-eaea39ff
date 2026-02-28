@@ -1,0 +1,552 @@
+---
+title: File upload composable
+description: useLiveUpload for Phoenix LiveView file uploads in Vue components
+---
+
+The `useLiveUpload` composable provides a Vue-friendly API for handling Phoenix LiveView file uploads. It manages the required DOM elements, upload state, and integrates seamlessly with LiveView's upload system.
+
+## useLiveUpload
+
+```typescript
+function useLiveUpload(
+  uploadConfig: MaybeRefOrGetter<UploadConfig>,
+  options: UploadOptions
+): UseLiveUploadReturn
+```
+
+### Parameters
+
+<ParamField path="uploadConfig" type="MaybeRefOrGetter<UploadConfig>" required>
+  Reactive reference to the upload configuration from LiveView (typically `() => props.upload`). The `UploadConfig` is created on the server using `allow_upload/3` in your LiveView.
+</ParamField>
+
+<ParamField path="options" type="UploadOptions" required>
+  Configuration options for the upload
+  
+  <Expandable title="properties">
+    <ParamField path="changeEvent" type="string">
+      Optional event name for file validation. This event is sent when files are selected, allowing the server to validate files before upload starts.
+    </ParamField>
+    
+    <ParamField path="submitEvent" type="string" required>
+      Required event name for upload submission. This event is sent when files are ready to be uploaded (for manual uploads) or when the upload form is submitted.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+### Returns
+
+<ResponseField name="UseLiveUploadReturn" type="object">
+  <Expandable title="reactive state">
+    <ResponseField name="entries" type="Ref<UploadEntry[]>">
+      Reactive list of current entries coming from the server patch. Each entry contains upload progress and metadata.
+    </ResponseField>
+    
+    <ResponseField name="progress" type="Ref<number>">
+      Overall progress 0-100 derived from all entries
+    </ResponseField>
+    
+    <ResponseField name="inputEl" type="Ref<HTMLInputElement | null>">
+      The underlying hidden `<input type="file">` element
+    </ResponseField>
+    
+    <ResponseField name="valid" type="ComputedRef<boolean>">
+      Whether the selected files are valid (no errors in the upload config)
+    </ResponseField>
+  </Expandable>
+  
+  <Expandable title="methods">
+    <ResponseField name="showFilePicker" type="function">
+      Opens the native file-picker dialog
+      
+      ```typescript
+      () => void
+      ```
+    </ResponseField>
+    
+    <ResponseField name="addFiles" type="function">
+      Manually enqueue external files (e.g., from drag-and-drop)
+      
+      ```typescript
+      (files: (File | Blob)[] | DataTransfer) => void
+      ```
+    </ResponseField>
+    
+    <ResponseField name="submit" type="function">
+      Submit all currently queued files to LiveView (for non-auto uploads)
+      
+      ```typescript
+      () => void
+      ```
+    </ResponseField>
+    
+    <ResponseField name="cancel" type="function">
+      Cancel a single entry by ref or every entry when omitted
+      
+      ```typescript
+      (ref?: string) => void
+      ```
+    </ResponseField>
+    
+    <ResponseField name="clear" type="function">
+      Clear local queue and reset hidden input (post-upload cleanup)
+      
+      ```typescript
+      () => void
+      ```
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Type definitions
+
+<AccordionGroup>
+  <Accordion title="UploadConfig">
+    The upload configuration object provided by LiveView's `allow_upload/3`.
+    
+    ```typescript
+    interface UploadConfig {
+      ref: string
+      name: string
+      accept: string | false
+      max_entries: number
+      auto_upload: boolean
+      entries: UploadEntry[]
+      errors: { ref: string; error: string }[]
+    }
+    ```
+    
+    <ParamField path="ref" type="string">
+      Unique identifier for this upload configuration
+    </ParamField>
+    
+    <ParamField path="name" type="string">
+      The name of the upload (matches the `allow_upload` call)
+    </ParamField>
+    
+    <ParamField path="accept" type="string | false">
+      Accepted file types (MIME types or extensions)
+    </ParamField>
+    
+    <ParamField path="max_entries" type="number">
+      Maximum number of files that can be uploaded
+    </ParamField>
+    
+    <ParamField path="auto_upload" type="boolean">
+      Whether files should automatically upload when selected
+    </ParamField>
+    
+    <ParamField path="entries" type="UploadEntry[]">
+      Current upload entries with progress
+    </ParamField>
+    
+    <ParamField path="errors" type="array">
+      Upload-level errors
+    </ParamField>
+  </Accordion>
+  
+  <Accordion title="UploadEntry">
+    Represents a single file in the upload queue.
+    
+    ```typescript
+    interface UploadEntry {
+      ref: string
+      client_name: string
+      client_size: number
+      client_type: string
+      progress: number
+      done: boolean
+      valid: boolean
+      preflighted: boolean
+      errors: string[]
+    }
+    ```
+    
+    <ParamField path="ref" type="string">
+      Unique identifier for this upload entry
+    </ParamField>
+    
+    <ParamField path="client_name" type="string">
+      Original file name
+    </ParamField>
+    
+    <ParamField path="client_size" type="number">
+      File size in bytes
+    </ParamField>
+    
+    <ParamField path="client_type" type="string">
+      MIME type of the file
+    </ParamField>
+    
+    <ParamField path="progress" type="number">
+      Upload progress (0-100)
+    </ParamField>
+    
+    <ParamField path="done" type="boolean">
+      Whether the upload is complete
+    </ParamField>
+    
+    <ParamField path="valid" type="boolean">
+      Whether the file passed validation
+    </ParamField>
+    
+    <ParamField path="preflighted" type="boolean">
+      Whether the file has been preflighted (validated on the server)
+    </ParamField>
+    
+    <ParamField path="errors" type="string[]">
+      Validation errors for this entry
+    </ParamField>
+  </Accordion>
+</AccordionGroup>
+
+## Basic usage
+
+```html
+<script setup>
+import { useLiveUpload } from 'live_vue'
+import type { UploadConfig } from 'live_vue'
+
+interface Props {
+  upload: UploadConfig
+}
+
+const props = defineProps<Props>()
+
+const { entries, showFilePicker, submit, cancel, progress, valid } = useLiveUpload(
+  () => props.upload,
+  {
+    changeEvent: "validate",
+    submitEvent: "save"
+  }
+)
+</script>
+
+<template>
+  <div class="upload-area">
+    <!-- File picker button -->
+    <button @click="showFilePicker" class="btn-primary">
+      Select Files
+    </button>
+
+    <!-- Upload button for manual uploads -->
+    <button 
+      v-if="!upload.auto_upload && entries.length > 0" 
+      @click="submit"
+      :disabled="!valid"
+      class="btn-success"
+    >
+      Upload {{ entries.length }} file(s)
+    </button>
+
+    <!-- Overall progress -->
+    <div v-if="entries.length > 0" class="progress-bar">
+      <div class="progress-fill" :style="{ width: progress + '%' }"></div>
+      <span>{{ progress }}%</span>
+    </div>
+
+    <!-- File list -->
+    <div class="file-list">
+      <div v-for="entry in entries" :key="entry.ref" class="file-item">
+        <div class="file-info">
+          <span class="file-name">{{ entry.client_name }}</span>
+          <span class="file-size">{{ formatBytes(entry.client_size) }}</span>
+        </div>
+        
+        <!-- Entry-specific progress -->
+        <div class="progress-bar-small">
+          <div class="progress-fill" :style="{ width: entry.progress + '%' }"></div>
+        </div>
+        
+        <!-- Entry status -->
+        <span v-if="entry.done" class="status-done">✓</span>
+        <span v-else-if="entry.errors.length > 0" class="status-error">
+          {{ entry.errors.join(', ') }}
+        </span>
+        
+        <!-- Cancel button -->
+        <button 
+          v-if="!entry.done" 
+          @click="cancel(entry.ref)"
+          class="btn-cancel"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script>
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return '0 Bytes'
+  const k = 1024
+  const sizes = ['Bytes', 'KB', 'MB', 'GB']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i]
+}
+</script>
+```
+
+## Drag and drop
+
+```html
+<script setup>
+import { useLiveUpload } from 'live_vue'
+import { ref } from 'vue'
+
+const props = defineProps<{ upload: UploadConfig }>()
+
+const { addFiles, entries, showFilePicker, progress } = useLiveUpload(
+  () => props.upload,
+  { submitEvent: "save" }
+)
+
+const isDragging = ref(false)
+
+const handleDrop = (event: DragEvent) => {
+  event.preventDefault()
+  isDragging.value = false
+  
+  if (event.dataTransfer) {
+    addFiles(event.dataTransfer)
+  }
+}
+
+const handleDragOver = (event: DragEvent) => {
+  event.preventDefault()
+  isDragging.value = true
+}
+
+const handleDragLeave = () => {
+  isDragging.value = false
+}
+</script>
+
+<template>
+  <div
+    @drop="handleDrop"
+    @dragover="handleDragOver"
+    @dragleave="handleDragLeave"
+    :class="{
+      'border-blue-500 bg-blue-50': isDragging,
+      'border-gray-300': !isDragging
+    }"
+    class="border-2 border-dashed rounded-lg p-8 text-center transition-colors"
+  >
+    <div v-if="entries.length === 0">
+      <p class="text-gray-600">Drop files here or</p>
+      <button @click="showFilePicker" class="text-blue-600 underline">
+        browse
+      </button>
+    </div>
+    
+    <div v-else>
+      <div class="mb-4">
+        <div class="text-sm text-gray-600">Uploading {{ entries.length }} file(s)</div>
+        <div class="text-2xl font-bold">{{ progress }}%</div>
+      </div>
+      
+      <div class="space-y-2">
+        <div v-for="entry in entries" :key="entry.ref" class="text-left">
+          <div class="flex items-center justify-between">
+            <span class="text-sm">{{ entry.client_name }}</span>
+            <span class="text-sm text-gray-500">{{ entry.progress }}%</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+```
+
+## Image preview
+
+```html
+<script setup>
+import { useLiveUpload } from 'live_vue'
+import { ref, watch } from 'vue'
+
+const props = defineProps<{ upload: UploadConfig }>()
+
+const { entries, showFilePicker, inputEl } = useLiveUpload(
+  () => props.upload,
+  {
+    changeEvent: "validate",
+    submitEvent: "save"
+  }
+)
+
+const previews = ref<Map<string, string>>(new Map())
+
+// Generate preview URLs for image files
+watch(inputEl, (input) => {
+  if (input?.files) {
+    Array.from(input.files).forEach((file, index) => {
+      if (file.type.startsWith('image/')) {
+        const entry = entries.value[index]
+        if (entry) {
+          const url = URL.createObjectURL(file)
+          previews.value.set(entry.ref, url)
+        }
+      }
+    })
+  }
+})
+
+// Clean up preview URLs when entries are removed
+watch(entries, (newEntries, oldEntries) => {
+  const newRefs = new Set(newEntries.map(e => e.ref))
+  oldEntries?.forEach(entry => {
+    if (!newRefs.has(entry.ref)) {
+      const url = previews.value.get(entry.ref)
+      if (url) {
+        URL.revokeObjectURL(url)
+        previews.value.delete(entry.ref)
+      }
+    }
+  })
+})
+</script>
+
+<template>
+  <div>
+    <button @click="showFilePicker" class="btn">
+      Select Images
+    </button>
+    
+    <div class="grid grid-cols-3 gap-4 mt-4">
+      <div v-for="entry in entries" :key="entry.ref" class="relative">
+        <img 
+          v-if="previews.get(entry.ref)" 
+          :src="previews.get(entry.ref)" 
+          :alt="entry.client_name"
+          class="w-full h-32 object-cover rounded"
+        />
+        
+        <!-- Progress overlay -->
+        <div 
+          v-if="!entry.done" 
+          class="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center rounded"
+        >
+          <span class="text-white font-bold">{{ entry.progress }}%</span>
+        </div>
+        
+        <!-- Done indicator -->
+        <div 
+          v-if="entry.done" 
+          class="absolute top-2 right-2 bg-green-500 text-white rounded-full w-6 h-6 flex items-center justify-center"
+        >
+          ✓
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+```
+
+## Error handling
+
+```html
+<script setup>
+import { useLiveUpload } from 'live_vue'
+import { computed } from 'vue'
+
+const props = defineProps<{ upload: UploadConfig }>()
+
+const { entries, showFilePicker, valid } = useLiveUpload(
+  () => props.upload,
+  { submitEvent: "save" }
+)
+
+// Check for upload-level errors
+const uploadErrors = computed(() => props.upload.errors || [])
+
+// Check if any entries have errors
+const hasEntryErrors = computed(() => 
+  entries.value.some(entry => entry.errors.length > 0)
+)
+</script>
+
+<template>
+  <div>
+    <!-- Upload-level errors -->
+    <div v-if="uploadErrors.length > 0" class="alert alert-error">
+      <div v-for="error in uploadErrors" :key="error.ref">
+        {{ error.error }}
+      </div>
+    </div>
+    
+    <!-- Validation status -->
+    <div v-if="!valid" class="alert alert-warning">
+      Some files are invalid. Please check the errors below.
+    </div>
+    
+    <button @click="showFilePicker">Select Files</button>
+    
+    <!-- Entry-specific errors -->
+    <div v-for="entry in entries" :key="entry.ref" class="file-item">
+      <span>{{ entry.client_name }}</span>
+      
+      <div v-if="entry.errors.length > 0" class="text-red-600">
+        <div v-for="(error, index) in entry.errors" :key="index">
+          {{ error }}
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+```
+
+## Server-side setup
+
+In your LiveView, configure the upload using `allow_upload/3`:
+
+```elixir
+defmodule MyAppWeb.UploadLive do
+  use MyAppWeb, :live_view
+
+  def mount(_params, _session, socket) do
+    socket =
+      socket
+      |> allow_upload(:avatar, 
+        accept: ~w(.jpg .jpeg .png),
+        max_entries: 1,
+        max_file_size: 5_000_000,
+        auto_upload: true
+      )
+
+    {:ok, socket}
+  end
+
+  def handle_event("validate", _params, socket) do
+    # Validation happens automatically
+    {:noreply, socket}
+  end
+
+  def handle_event("save", _params, socket) do
+    uploaded_files =
+      consume_uploaded_entries(socket, :avatar, fn %{path: path}, entry ->
+        dest = Path.join("priv/static/uploads", entry.client_name)
+        File.cp!(path, dest)
+        {:ok, "/uploads/#{entry.client_name}"}
+      end)
+
+    {:noreply, assign(socket, uploaded_files: uploaded_files)}
+  end
+
+  def handle_event("cancel-upload", %{"ref" => ref}, socket) do
+    {:noreply, cancel_upload(socket, :avatar, ref)}
+  end
+end
+```
+
+Then pass the upload config to your Vue component:
+
+```elixir
+<.vue 
+  v-component="FileUploader" 
+  upload={@uploads.avatar}
+  v-socket={@socket}
+/>
+```

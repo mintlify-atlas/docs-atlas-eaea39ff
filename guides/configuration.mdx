@@ -1,0 +1,421 @@
+---
+title: Configuration
+description: Advanced setup, SSR configuration, and customization options for LiveVue
+---
+
+This guide covers all configuration options available in LiveVue, from basic setup to advanced customization.
+
+## Application configuration
+
+LiveVue configuration is managed in your `config/config.exs` file:
+
+```elixir
+import Config
+
+config :live_vue,
+  # SSR module selection
+  # For development: LiveVue.SSR.ViteJS
+  # For production: LiveVue.SSR.NodeJS
+  ssr_module: nil,
+
+  # Default SSR behavior
+  # Can be overridden per-component with v-ssr={true|false}
+  ssr: true,
+
+  # Vite development server URL
+  # Typically http://localhost:5173 in development
+  vite_host: nil,
+
+  # SSR server bundle path (relative to priv directory)
+  # Created by Vite "build-server" command
+  ssr_filepath: "./static/server.mjs",
+
+  # Testing configuration
+  # When false, we will always update full props and not send diffs
+  # Useful for testing scenarios where you need complete props state
+  enable_props_diff: true,
+
+  # Gettext backend for translating form validation errors
+  # When set, Phoenix.HTML.Form errors are translated using this backend
+  # Example: MyApp.Gettext
+  gettext_backend: nil
+```
+
+### Environment-specific configuration
+
+<Tabs>
+  <Tab title="Development">
+    Recommended development configuration:
+
+    ```elixir config/dev.exs
+    config :live_vue,
+      ssr_module: LiveVue.SSR.ViteJS,
+      vite_host: "http://localhost:5173",
+      ssr: true
+    ```
+  </Tab>
+  <Tab title="Production">
+    Recommended production configuration:
+
+    ```elixir config/prod.exs
+    config :live_vue,
+      ssr_module: LiveVue.SSR.NodeJS,
+      ssr: true
+
+    # or if you don't want to use SSR
+    config :live_vue,
+      ssr_module: nil,
+      ssr: false
+    ```
+  </Tab>
+  <Tab title="Test">
+    Testing configuration:
+
+    ```elixir config/test.exs
+    config :live_vue,
+      enable_props_diff: false  # Get complete props for easier testing
+    ```
+  </Tab>
+</Tabs>
+
+## Vue application setup
+
+Configure your Vue application in `assets/vue/index.js`. You should use `createLiveVue` to provide two required functions:
+
+| Option | Type | Description |
+|--------|------|-------------|
+| `resolve` | `(name: string) => Component \| Promise<Component>` | Component resolution function |
+| `setup` | `(context: SetupContext) => VueApp` | Vue app setup function |
+
+### Basic configuration
+
+```javascript assets/vue/index.js
+import "vite/modulepreload-polyfill"
+import { h } from "vue"
+import { createLiveVue, findComponent } from "live_vue"
+
+export default createLiveVue({
+  // Component resolution
+  resolve: name => {
+    const components = {
+      ...import.meta.glob("./**/*.vue", { eager: true }),
+      ...import.meta.glob("../../lib/**/*.vue", { eager: true }),
+    }
+
+    // findComponent resolves by matching path segments from the end
+    return findComponent(components, name)
+  },
+
+  // Vue app setup
+  setup: ({ createApp, component, props, slots, plugin, el }) => {
+    const app = createApp({ render: () => h(component, props, slots) })
+    app.use(plugin)
+    app.mount(el)
+    return app
+  },
+})
+```
+
+### SetupContext
+
+SetupContext is an object passed to the setup function:
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `createApp` | `Function` | Vue's createApp or createSSRApp |
+| `component` | `Component` | The Vue component to render |
+| `props` | `object` | Props passed from LiveView |
+| `slots` | `object` | Slots passed from LiveView |
+| `plugin` | `Plugin` | LiveVue plugin (required) |
+| `el` | `HTMLElement` | Mount target element |
+| `ssr` | `boolean` | Whether this is SSR context |
+
+### Component resolution options
+
+<Tabs>
+  <Tab title="Eager loading">
+    All components are bundled with the main application (default):
+
+    ```javascript
+    const components = {
+      ...import.meta.glob("./**/*.vue", { eager: true }),
+    }
+    ```
+  </Tab>
+  <Tab title="Lazy loading">
+    Components are loaded on-demand:
+
+    ```javascript
+    const components = {
+      Counter: () => import("./Counter.vue"),
+      Modal: () => import("./Modal.vue")
+    }
+
+    // Or using Vite's glob import
+    const components = import.meta.glob(
+      "../../lib/**/*.vue",
+      { eager: false, import: 'default' }
+    )
+    ```
+  </Tab>
+  <Tab title="Custom logic">
+    Custom component mapping and resolution:
+
+    ```javascript
+    resolve: name => {
+      const componentMap = {
+        'MyCounter': () => import('./components/Counter.vue'),
+        'admin/Dashboard': () => import('./admin/Dashboard.vue')
+      }
+
+      return componentMap[name]
+    }
+    ```
+  </Tab>
+</Tabs>
+
+### Vue app customization
+
+Add plugins, stores, and other Vue features:
+
+```javascript
+import { createPinia } from "pinia"
+import { createI18n } from "vue-i18n"
+
+export default createLiveVue({
+  setup: ({ createApp, component, props, slots, plugin, el, ssr }) => {
+    const app = createApp({ render: () => h(component, props, slots) })
+
+    // LiveVue plugin (required)
+    app.use(plugin)
+
+    // Add your plugins
+    const pinia = createPinia()
+    app.use(pinia)
+
+    const i18n = createI18n({
+      locale: 'en',
+      messages: { /* your translations */ }
+    })
+    app.use(i18n)
+
+    // SSR-specific setup
+    if (ssr) {
+      // Server-side specific initialization
+    }
+
+    app.mount(el)
+    return app
+  }
+})
+```
+
+## Component organization
+
+### Directory structure
+
+By default, Vue components are resolved from:
+- `assets/vue/` - Main Vue components directory
+- `lib/my_app_web/` - Colocated with LiveView files
+
+### Custom Vue root directories
+
+Configure component discovery paths in your LiveView module:
+
+```elixir lib/my_app_web.ex
+defmodule MyAppWeb do
+  def html_helpers do
+    quote do
+      use LiveVue.Components, vue_root: [
+        "./assets/vue",
+        "./lib/my_app_web",
+        "./lib/my_app_web/components"
+      ]
+    end
+  end
+end
+```
+
+This generates shortcut functions for your components:
+
+```elixir
+# Instead of
+<.vue v-component="Counter" v-socket={@socket} />
+
+# You can use
+<.Counter v-socket={@socket} />
+```
+
+### Component naming conventions
+
+Components are resolved by name or path suffix:
+- `Counter.vue` → accessible as `"Counter"`
+- `path/to/Component.vue` → accessible as `"path/to/Component"` or `"Component"`
+- `path/to/component/index.vue` → accessible as `"path/to/component"` or `"component"`
+
+## Server-side rendering (SSR)
+
+LiveVue provides flexible SSR options that work great in both development and production environments.
+
+### SSR modules
+
+LiveVue offers two SSR strategies depending on your environment:
+
+<Tabs>
+  <Tab title="ViteJS (Development)">
+    Perfect for development with hot module replacement:
+
+    ```elixir config/dev.exs
+    config :live_vue,
+      ssr_module: LiveVue.SSR.ViteJS,
+      vite_host: "http://localhost:5173"
+    ```
+
+    Uses Vite's `ssrLoadModule` for efficient development compilation with instant updates.
+  </Tab>
+  <Tab title="NodeJS (Production)">
+    Optimized for production with an in-memory server bundle:
+
+    ```elixir config/prod.exs
+    config :live_vue,
+      ssr_module: LiveVue.SSR.NodeJS,
+      ssr: true
+    ```
+
+    Uses elixir-nodejs with a pre-built server bundle for optimal performance.
+  </Tab>
+</Tabs>
+
+### SSR configuration
+
+Control SSR behavior globally or per-component:
+
+```elixir config/config.exs
+config :live_vue,
+  ssr: true,  # Enable SSR by default
+  ssr_filepath: "./static/server.mjs"  # Server bundle path
+```
+
+### SSR behavior
+
+SSR is intelligently applied:
+- **Runs during**: Initial page loads (dead renders)
+- **Skips during**: Live navigation and WebSocket updates
+- **Can be disabled**: Per-component with `v-ssr={false}`
+
+<Info>
+**What are "dead renders"?**
+
+A "dead render" occurs when the page is loaded without an active WebSocket connection - this includes the initial HTTP request before LiveView connects. During this phase, SSR renders the Vue component to HTML on the server so users see content immediately.
+
+Once the WebSocket connects (making the view "live"), SSR is skipped because Vue components are already mounted and hydrated client-side.
+</Info>
+
+This gives you the SEO and performance benefits of SSR without the overhead during live updates.
+
+### Per-component SSR control
+
+Override global settings for specific components:
+
+```elixir
+<!-- Force SSR for this component -->
+<.vue v-component="CriticalContent" v-ssr={true} v-socket={@socket} />
+
+<!-- Disable SSR for client-only widgets -->
+<.vue v-component="InteractiveChart" v-ssr={false} v-socket={@socket} />
+
+<!-- Use global default -->
+<.vue v-component="RegularComponent" v-socket={@socket} />
+```
+
+### Production SSR setup
+
+For production deployments, you'll need Node.js 19+ and proper configuration:
+
+<Steps>
+  <Step title="Install Node.js 19+">
+    Install Node.js 19 or higher in your production environment.
+  </Step>
+  <Step title="Configure NodeJS supervisor">
+    Add to your `application.ex`:
+
+    ```elixir lib/my_app/application.ex
+    children = [
+      {NodeJS.Supervisor, [path: LiveVue.SSR.NodeJS.server_path(), pool_size: 4]},
+      # ... other children
+    ]
+    ```
+  </Step>
+  <Step title="Build server bundle">
+    As part of your deployment:
+
+    ```bash
+    cd assets && npm run build-server
+    ```
+
+    The server bundle will be created at `priv/static/server.mjs`.
+  </Step>
+</Steps>
+
+### SSR troubleshooting
+
+<AccordionGroup>
+  <Accordion title="SSR not working in development?">
+    - Check that Vite dev server is running on the configured port
+    - Verify `vite_host` matches your Vite server URL
+  </Accordion>
+  <Accordion title="SSR failing in production?">
+    - Ensure Node.js 19+ is installed
+    - Check that `priv/static/server.mjs` exists after build
+    - Verify NodeJS supervisor is properly configured
+  </Accordion>
+  <Accordion title="Performance issues?">
+    - Consider adjusting the NodeJS pool size based on your server capacity
+    - Disable SSR for components that don't benefit from it
+  </Accordion>
+</AccordionGroup>
+
+## Testing configuration
+
+LiveVue provides testing-specific configuration options.
+
+### enable_props_diff
+
+By default, LiveVue optimizes performance by only sending prop changes (diffs) to the client. During testing, you may need access to the complete props state:
+
+```elixir config/test.exs
+config :live_vue,
+  enable_props_diff: false
+```
+
+When disabled:
+- LiveVue will always send full props and not send diffs
+- The `props` field returned by `LiveVue.Test.get_vue/2` will contain the complete props state
+- This makes it easier to write comprehensive tests that verify the full component state
+
+<Note>
+This option is primarily intended for testing scenarios. In production, the default behavior (sending only diffs) provides better performance.
+</Note>
+
+## Deprecated features
+
+### Shared props (removed)
+
+<Warning>
+The `shared_props` configuration option was removed in v1.0.0.
+
+This feature allowed automatic injection of socket assigns into all Vue components. However, it had a fundamental flaw: LiveView only re-renders components when their explicitly-passed assigns change.
+
+**Workaround**: Pass props explicitly in your templates:
+
+```elixir
+<.vue v-component="MyComponent" v-socket={@socket} flash={@flash} user={@current_user} />
+```
+
+This ensures LiveView's change tracking works correctly and your Vue components receive updates when the data changes.
+</Warning>
+
+## Next steps
+
+- [Basic usage](/guides/basic-usage) for fundamental patterns
+- [Forms](/guides/forms) for complex forms with server-side validation

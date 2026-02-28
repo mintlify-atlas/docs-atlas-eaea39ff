@@ -1,0 +1,370 @@
+---
+title: Deployment
+description: Production deployment guide for LiveVue applications
+---
+
+Deploying a LiveVue app is similar to deploying a regular Phoenix app, with one key requirement: **Node.js version 19 or later must be installed** in your production environment.
+
+<Info>
+For detailed SSR configuration options, see [Configuration](/guides/configuration). This guide focuses on deployment-specific setup.
+</Info>
+
+## General requirements
+
+Before deploying your LiveVue application, ensure you have:
+
+1. **Node.js 19+** installed in production
+2. Standard Phoenix deployment requirements
+3. Built assets before deployment
+
+## Fly.io deployment guide
+
+Here's a detailed guide for deploying to [Fly.io](https://fly.io/). Similar principles apply to other hosting providers.
+
+### Generate Dockerfile
+
+First, generate a Phoenix release Dockerfile:
+
+```bash
+mix phx.gen.release --docker
+```
+
+### Modify Dockerfile
+
+Update the generated Dockerfile to include Node.js. Here are the key sections:
+
+```dockerfile
+# Build Stage
+FROM hexpm/elixir:1.14.4-erlang-25.3.2-debian-bullseye-20230227-slim AS builder
+
+# Install build dependencies
+RUN apt-get update -y && apt-get install -y build-essential git curl \
+    && apt-get clean && rm -f /var/lib/apt/lists/*_*
+
+# Install Node.js for build stage
+RUN curl -fsSL https://deb.nodesource.com/setup_19.x | bash - && apt-get install -y nodejs
+
+# Set build ENV
+WORKDIR /app
+
+# Install dependencies
+COPY mix.exs mix.lock ./
+RUN mix deps.get --only prod
+
+# Copy application code
+COPY . .
+
+# Install npm dependencies and build assets
+RUN cd /app/assets && npm install
+RUN mix assets.deploy
+
+# Compile the release
+RUN mix compile
+RUN mix release
+
+# Production Stage
+FROM ${RUNNER_IMAGE}
+
+RUN apt-get update -y && \
+    apt-get install -y libstdc++6 openssl libncurses5 locales ca-certificates curl \
+    && apt-get clean && rm -f /var/lib/apt/lists/*_*
+
+# Install Node.js for production
+RUN curl -fsSL https://deb.nodesource.com/setup_19.x | bash - && apt-get install -y nodejs
+
+# Copy the release from builder
+WORKDIR /app
+COPY --from=builder /app/_build/prod/rel/my_app ./
+
+CMD ["/app/bin/server"]
+```
+
+<Note>
+**Key changes**:
+- Add `curl` to build dependencies
+- Install Node.js in both build and production stages
+- Add npm install step for assets
+</Note>
+
+### Launch on Fly.io
+
+<Steps>
+  <Step title="Initialize your app">
+    ```bash
+    fly launch
+    ```
+  </Step>
+  <Step title="Configure database">
+    ```bash
+    ? Do you want to tweak these settings before proceeding? (y/N) y
+    ```
+    
+    In the configuration window:
+    - Choose "Fly Postgres" for database
+    - Name your database
+    - Consider development configuration for cost savings
+    - Review other settings as needed
+  </Step>
+  <Step title="Deploy">
+    The deployment will begin automatically after configuration. Wait for it to complete.
+  </Step>
+  <Step title="Open your app">
+    ```bash
+    fly apps open
+    ```
+  </Step>
+</Steps>
+
+## Other deployment options
+
+### Heroku
+
+For Heroku deployment:
+
+<Steps>
+  <Step title="Use Phoenix buildpack">
+    Follow the [Phoenix Heroku deployment guide](https://hexdocs.pm/phoenix/heroku.html)
+  </Step>
+  <Step title="Add Node.js buildpack">
+    ```bash
+    heroku buildpacks:add --index 1 heroku/nodejs
+    ```
+  </Step>
+  <Step title="Configure environment">
+    Set required environment variables including database URL and secret key base
+  </Step>
+</Steps>
+
+### Docker
+
+If using your own Docker setup:
+
+1. **Ensure Node.js 19+ is installed** in your production image
+2. Follow standard Phoenix deployment practices
+3. Configure SSR for production (see [Configuration](/guides/configuration))
+
+```dockerfile
+# Example production stage
+FROM debian:bullseye-slim
+
+# Install runtime dependencies including Node.js
+RUN apt-get update && \
+    apt-get install -y curl ca-certificates && \
+    curl -fsSL https://deb.nodesource.com/setup_19.x | bash - && \
+    apt-get install -y nodejs && \
+    rm -rf /var/lib/apt/lists/*
+
+# Copy your release
+COPY --from=builder /app/_build/prod/rel/my_app /app
+
+WORKDIR /app
+CMD ["/app/bin/server"]
+```
+
+### Custom server
+
+For bare metal or VM deployments:
+
+<Steps>
+  <Step title="Install Node.js 19+">
+    ```bash
+    curl -fsSL https://deb.nodesource.com/setup_19.x | bash -
+    apt-get install -y nodejs
+    ```
+  </Step>
+  <Step title="Follow Phoenix deployment guide">
+    Follow the standard [Phoenix deployment guide](https://hexdocs.pm/phoenix/deployment.html)
+  </Step>
+  <Step title="Configure SSR">
+    Ensure the NodeJS supervisor is properly configured in your application
+  </Step>
+</Steps>
+
+## SSR configuration for production
+
+LiveVue uses the NodeJS mode for production SSR. Add this to your `application.ex`:
+
+```elixir lib/my_app/application.ex
+children = [
+  # ... other children
+  {NodeJS.Supervisor, [path: LiveVue.SSR.NodeJS.server_path(), pool_size: 4]},
+]
+```
+
+The `pool_size` determines how many Node.js processes are maintained in the pool. Adjust based on your needs:
+
+- **Low traffic**: `pool_size: 2-4`
+- **Medium traffic**: `pool_size: 4-8`
+- **High traffic**: `pool_size: 8-16`
+
+<Warning>
+**SSR module configuration**
+
+Make sure your production config uses the NodeJS SSR module:
+
+```elixir config/prod.exs
+config :live_vue,
+  ssr_module: LiveVue.SSR.NodeJS,
+  ssr_filepath: "./static/server.mjs"
+```
+</Warning>
+
+## Production checklist
+
+Use this checklist to ensure your LiveVue app is production-ready:
+
+- [ ] Node.js 19+ installed in production environment
+- [ ] Assets built using `mix assets.deploy`
+- [ ] SSR configured properly with NodeJS supervisor
+- [ ] Database configured and migrations run
+- [ ] Environment variables set (SECRET_KEY_BASE, DATABASE_URL, etc.)
+- [ ] SSL certificates configured (if needed)
+- [ ] Production secrets generated
+- [ ] Release configuration tested locally
+- [ ] Health checks configured
+- [ ] Monitoring and logging set up
+
+## Troubleshooting
+
+### SSR not working
+
+<Accordion title="Verify Node.js installation">
+```bash
+node --version  # Should show v19.0.0 or higher
+```
+
+If Node.js is not installed or the version is too old, SSR will fail silently and you'll see empty component divs.
+</Accordion>
+
+<Accordion title="Check SSR configuration">
+Ensure your config includes:
+
+```elixir
+config :live_vue,
+  ssr_module: LiveVue.SSR.NodeJS,
+  ssr_filepath: "./static/server.mjs"
+```
+
+And verify the NodeJS supervisor is in your application supervision tree.
+</Accordion>
+
+<Accordion title="Verify server bundle exists">
+Check that `priv/static/server.mjs` exists in your release:
+
+```bash
+ls -la priv/static/server.mjs
+```
+
+If missing, ensure `mix assets.deploy` runs successfully during build.
+</Accordion>
+
+### Asset loading issues
+
+<Accordion title="Assets not found (404 errors)">
+- Verify assets were built during deployment
+- Check that `static` directory is included in your release
+- Inspect the digest manifest in `priv/static/cache_manifest.json`
+- Ensure your endpoint configuration includes static assets:
+
+```elixir
+plug Plug.Static,
+  at: "/",
+  from: :my_app,
+  gzip: false,
+  only: ~w(assets fonts images favicon.ico robots.txt)
+```
+</Accordion>
+
+<Accordion title="Components not rendering">
+- Check browser console for JavaScript errors
+- Verify Vue components are included in the client bundle
+- Ensure `getHooks()` is properly configured in your app.js
+- Test SSR by checking the initial HTML source
+</Accordion>
+
+### Performance issues
+
+<Accordion title="Slow SSR rendering">
+Consider adjusting the NodeJS pool size:
+
+```elixir
+# Increase pool size for more concurrent SSR requests
+{NodeJS.Supervisor, [path: LiveVue.SSR.NodeJS.server_path(), pool_size: 8]}
+```
+
+Monitor your application to find the optimal pool size for your traffic patterns.
+</Accordion>
+
+<Accordion title="High memory usage">
+- Reduce NodeJS pool size if memory is constrained
+- Consider disabling SSR for some components using `v-ssr={false}`
+- Profile your Vue components for memory leaks
+- Ensure components are properly unmounted
+</Accordion>
+
+### Build failures
+
+<Accordion title="npm install fails during build">
+- Verify Node.js is installed in the build stage
+- Check that `package.json` and `package-lock.json` are copied to the build context
+- Ensure network connectivity in the build environment
+- Try running `npm ci` instead of `npm install` for more reproducible builds
+</Accordion>
+
+<Accordion title="mix assets.deploy fails">
+- Check that all npm dependencies are installed
+- Verify Vite configuration is correct
+- Look for TypeScript or compilation errors in assets
+- Ensure the assets directory exists and is accessible
+</Accordion>
+
+## Performance optimization tips
+
+### Enable compression
+
+Ensure Gzip compression is enabled for static assets:
+
+```elixir config/prod.exs
+config :my_app, MyAppWeb.Endpoint,
+  http: [compress: true]
+```
+
+### Use CDN for assets
+
+Consider using a CDN for static assets in high-traffic applications:
+
+```elixir config/prod.exs
+config :my_app, MyAppWeb.Endpoint,
+  static_url: [host: "cdn.example.com", port: 443, scheme: "https"]
+```
+
+### Optimize SSR
+
+- Disable SSR for components that don't need it using `v-ssr={false}`
+- Use SSR primarily for initial page load and SEO
+- Consider caching SSR output for frequently accessed pages
+
+### Monitor performance
+
+Set up monitoring to track:
+- SSR rendering time
+- WebSocket message sizes
+- Component mount/update times
+- Memory usage and garbage collection
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Configuration" icon="gear" href="/guides/configuration">
+    Fine-tune your production configuration
+  </Card>
+  <Card title="Architecture" icon="diagram-project" href="/guides/architecture">
+    Understand how LiveVue works under the hood
+  </Card>
+  <Card title="Testing" icon="flask" href="/guides/testing">
+    Test your application before deployment
+  </Card>
+  <Card title="GitHub Discussions" icon="github" href="https://github.com/Valian/live_vue/discussions">
+    Get help from the community
+  </Card>
+</CardGroup>

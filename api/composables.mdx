@@ -1,0 +1,411 @@
+---
+title: Core composables
+description: Vue composables for LiveView integration - useLiveVue, useLiveEvent, useLiveNavigation, and more
+---
+
+LiveVue provides several Vue composables to make interacting with LiveView from your components easier and more declarative.
+
+## useLiveVue
+
+Returns the LiveVue instance. Can be used to access the LiveVue instance from within a LiveVue component.
+
+```typescript
+function useLiveVue(): LiveHook
+```
+
+### Usage
+
+```html
+<script setup>
+import { useLiveVue } from 'live_vue'
+
+const live = useLiveVue()
+
+// Push events to LiveView
+live.pushEvent("increment", { amount: 1 })
+</script>
+```
+
+### Returns
+
+<ResponseField name="LiveHook" type="object">
+  The LiveView hook instance with the following properties and methods:
+
+  <Expandable title="properties">
+    <ResponseField name="el" type="HTMLElement">
+      The LiveView DOM element
+    </ResponseField>
+    
+    <ResponseField name="liveSocket" type="LiveSocketInstanceInterface">
+      The Phoenix LiveSocket instance
+    </ResponseField>
+    
+    <ResponseField name="vue" type="VueArgs">
+      Vue-specific context (app, props, slots)
+    </ResponseField>
+  </Expandable>
+
+  <Expandable title="methods">
+    <ResponseField name="pushEvent" type="function">
+      Push an event to the LiveView server
+      
+      ```typescript
+      pushEvent(event: string, payload?: object, callback?: (reply: any, ref: any) => void): number
+      ```
+    </ResponseField>
+    
+    <ResponseField name="handleEvent" type="function">
+      Register a callback for events from the server
+      
+      ```typescript
+      handleEvent<T>(event: string, callback: (data: T) => void): any
+      ```
+    </ResponseField>
+    
+    <ResponseField name="removeHandleEvent" type="function">
+      Remove a previously registered event handler
+      
+      ```typescript
+      removeHandleEvent(callbackRef: any): void
+      ```
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Error handling
+
+Throws an error if used outside a LiveVue component:
+
+```
+LiveVue not provided. Are you using this inside a LiveVue component?
+```
+
+---
+
+## useLiveEvent
+
+Registers a callback to be called when an event is received from the server. Automatically removes the callback when the component is unmounted.
+
+```typescript
+function useLiveEvent<T>(event: string, callback: (data: T) => void): void
+```
+
+### Parameters
+
+<ParamField path="event" type="string" required>
+  The event name to listen for
+</ParamField>
+
+<ParamField path="callback" type="function" required>
+  The callback to call when the event is received. Receives the event data as its argument.
+</ParamField>
+
+### Usage
+
+```html
+<script setup>
+import { useLiveEvent } from 'live_vue'
+import { ref } from 'vue'
+
+const notification = ref('')
+
+useLiveEvent("notification", (data) => {
+  notification.value = data.message
+})
+</script>
+
+<template>
+  <div v-if="notification" class="alert">
+    {{ notification }}
+  </div>
+</template>
+```
+
+### TypeScript support
+
+```typescript
+interface NotificationPayload {
+  message: string
+  type: 'info' | 'warning' | 'error'
+}
+
+useLiveEvent<NotificationPayload>("notification", (data) => {
+  // data is typed as NotificationPayload
+  console.log(data.message, data.type)
+})
+```
+
+---
+
+## useLiveNavigation
+
+A composable for navigation using the LiveSocket instance. Works in the same way as the `live_patch` and `live_redirect` functions in LiveView.
+
+```typescript
+function useLiveNavigation(): {
+  patch: (hrefOrQueryParams: string | Record<string, string>, opts?: { replace?: boolean }) => void
+  navigate: (href: string, opts?: { replace?: boolean }) => void
+}
+```
+
+### Returns
+
+<ResponseField name="patch" type="function">
+  Patches the current LiveView (similar to `live_patch`)
+  
+  <Expandable title="parameters">
+    <ParamField path="hrefOrQueryParams" type="string | Record<string, string>" required>
+      The URL to navigate to, or an object of query parameters to merge with the current path
+    </ParamField>
+    
+    <ParamField path="opts.replace" type="boolean" default="false">
+      If `true`, replaces the current history entry instead of pushing a new one
+    </ParamField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="navigate" type="function">
+  Navigates to a new location (similar to `live_redirect`)
+  
+  <Expandable title="parameters">
+    <ParamField path="href" type="string" required>
+      The URL to navigate to
+    </ParamField>
+    
+    <ParamField path="opts.replace" type="boolean" default="false">
+      If `true`, replaces the current history entry instead of pushing a new one
+    </ParamField>
+  </Expandable>
+</ResponseField>
+
+### Usage
+
+```html
+<script setup>
+import { useLiveNavigation } from 'live_vue'
+
+const { patch, navigate } = useLiveNavigation()
+
+const goToSettings = () => {
+  // Update query params only
+  patch({ tab: 'settings', page: '1' })
+}
+
+const goToProfile = () => {
+  // Navigate to a different LiveView
+  navigate('/profile')
+}
+
+const editPost = (id) => {
+  // Patch with full URL
+  patch(`/posts/${id}/edit`)
+}
+</script>
+
+<template>
+  <button @click="goToSettings">Settings</button>
+  <button @click="goToProfile">Profile</button>
+  <button @click="editPost(123)">Edit Post</button>
+</template>
+```
+
+### Error handling
+
+Throws an error if LiveSocket is not initialized:
+
+```
+LiveSocket not initialized
+```
+
+---
+
+## useEventReply
+
+A composable for handling LiveView events with replies. Provides a reactive way to execute events and handle their responses.
+
+```typescript
+function useEventReply<T = any, P extends Record<string, any> | void = Record<string, any>>(
+  eventName: string,
+  options?: UseEventReplyOptions<T>
+): UseEventReplyReturn<T, P>
+```
+
+### Parameters
+
+<ParamField path="eventName" type="string" required>
+  The name of the event to send to LiveView
+</ParamField>
+
+<ParamField path="options" type="UseEventReplyOptions<T>">
+  Configuration options
+  
+  <Expandable title="properties">
+    <ParamField path="defaultValue" type="T">
+      Default value to initialize data with
+    </ParamField>
+    
+    <ParamField path="updateData" type="function">
+      Function to transform reply data before storing it
+      
+      ```typescript
+      (reply: T, currentData: T | null) => T
+      ```
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+### Returns
+
+<ResponseField name="UseEventReplyReturn" type="object">
+  <Expandable title="properties">
+    <ResponseField name="data" type="Ref<T | null>">
+      Reactive data returned from the event reply
+    </ResponseField>
+    
+    <ResponseField name="isLoading" type="Ref<boolean>">
+      Whether an event is currently executing
+    </ResponseField>
+    
+    <ResponseField name="execute" type="function">
+      Execute the event with optional parameters. Returns a Promise that resolves with the server response.
+      
+      ```typescript
+      (params?: P) => Promise<T>
+      ```
+    </ResponseField>
+    
+    <ResponseField name="cancel" type="function">
+      Cancel the current event execution
+      
+      ```typescript
+      () => void
+      ```
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Usage
+
+```html
+<script setup>
+import { useEventReply } from 'live_vue'
+
+interface User {
+  id: number
+  name: string
+  email: string
+}
+
+const { data, isLoading, execute } = useEventReply<User>('fetch_user')
+
+const loadUser = async (userId: number) => {
+  try {
+    const user = await execute({ id: userId })
+    console.log('User loaded:', user)
+  } catch (error) {
+    console.error('Failed to load user:', error)
+  }
+}
+</script>
+
+<template>
+  <button @click="loadUser(123)" :disabled="isLoading">
+    {{ isLoading ? 'Loading...' : 'Load User' }}
+  </button>
+  
+  <div v-if="data">
+    <h3>{{ data.name }}</h3>
+    <p>{{ data.email }}</p>
+  </div>
+</template>
+```
+
+### Accumulating data
+
+```typescript
+interface Message {
+  id: number
+  text: string
+}
+
+const { data: messages, execute } = useEventReply<Message[]>('load_messages', {
+  defaultValue: [],
+  updateData: (newMessages, currentMessages) => {
+    // Append new messages to existing ones
+    return currentMessages ? [...currentMessages, ...newMessages] : newMessages
+  }
+})
+
+const loadMore = () => {
+  const lastId = messages.value[messages.value.length - 1]?.id || 0
+  execute({ after: lastId, limit: 10 })
+}
+```
+
+---
+
+## useLiveConnection
+
+A composable for monitoring LiveView WebSocket connectivity status. Provides reactive connection state and convenience methods.
+
+```typescript
+function useLiveConnection(): UseLiveConnectionReturn
+```
+
+### Returns
+
+<ResponseField name="UseLiveConnectionReturn" type="object">
+  <Expandable title="properties">
+    <ResponseField name="connectionState" type="Ref<string>">
+      Reactive connection state: `"connecting"` | `"open"` | `"closing"` | `"closed"`
+    </ResponseField>
+    
+    <ResponseField name="isConnected" type="ComputedRef<boolean>">
+      Whether the socket is currently connected (computed from `connectionState === "open"`)
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Usage
+
+```html
+<script setup>
+import { useLiveConnection } from 'live_vue'
+import { watch } from 'vue'
+
+const { connectionState, isConnected } = useLiveConnection()
+
+watch(connectionState, (state) => {
+  console.log('Connection state:', state)
+  
+  if (state === 'closed') {
+    console.log('Lost connection to server')
+  } else if (state === 'open') {
+    console.log('Connected to server')
+  }
+})
+</script>
+
+<template>
+  <div class="status-bar">
+    <span :class="{ online: isConnected, offline: !isConnected }">
+      {{ isConnected ? 'Online' : 'Offline' }}
+    </span>
+    <span class="text-sm">{{ connectionState }}</span>
+  </div>
+</template>
+```
+
+### Error handling
+
+Throws an error if LiveSocket is not initialized:
+
+```
+LiveSocket not initialized
+```
+
+Throws an error if Socket is not available:
+
+```
+Socket not available
+```

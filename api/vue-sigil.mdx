@@ -1,0 +1,269 @@
+---
+title: ~VUE sigil
+description: Inline Vue single-file components in LiveView templates
+---
+
+The `~VUE` sigil allows you to inline Vue single-file components directly inside a LiveView template. This is an alternative to using the `.vue` component function.
+
+<Note>
+  The older `~V` sigil is deprecated. Use `~VUE` instead.
+</Note>
+
+## Basic syntax
+
+```elixir
+def render(assigns) do
+  ~VUE"""
+  <script setup>
+  import { ref } from 'vue'
+  const count = ref(0)
+  </script>
+  
+  <template>
+    <button @click="count++">Count: {{ count }}</button>
+  </template>
+  
+  <style scoped>
+  button {
+    padding: 0.5rem 1rem;
+  }
+  </style>
+  """
+end
+```
+
+## How it works
+
+When you use the `~VUE` sigil, LiveVue automatically:
+
+1. Creates a Vue single-file component at `./assets/vue/_build/#{Module}.vue`
+2. Compiles it with your Vue application
+3. Renders it in place with all assigns passed as props
+
+## Props
+
+All assigns from the LiveView are automatically passed as props to the Vue component (except `vue_opts`, `socket`, `flash`, and `live_action`).
+
+```elixir
+def render(assigns) do
+  ~VUE"""
+  <script setup lang="ts">
+  import { ref } from 'vue'
+  
+  // Props are passed from LiveView assigns
+  const props = defineProps<{
+    count: number
+  }>()
+  
+  const diff = ref(1)
+  </script>
+  
+  <template>
+    <div>
+      Current count: {{ props.count }}
+      <label>Diff: </label>
+      <input v-model.number="diff" type="range" min="1" max="10" />
+      
+      <button phx-click="inc" :phx-value-diff="diff">
+        Increase counter by {{ diff }}
+      </button>
+    </div>
+  </template>
+  """
+end
+
+def mount(_params, _session, socket) do
+  {:ok, assign(socket, count: 0)}
+end
+
+def handle_event("inc", %{"diff"" => value}, socket) do
+  {:noreply, update(socket, :count, &(&1 + value))}
+end
+```
+
+## Configuration options
+
+You can pass options to the Vue component using the `vue_opts` assign:
+
+```elixir
+def render(assigns) do
+  assigns = assign(assigns, :vue_opts, %{
+    class: "custom-wrapper",
+    ssr: false
+  })
+  
+  ~VUE"""
+  <template>
+    <div>Component content</div>
+  </template>
+  """
+end
+```
+
+### Available options
+
+- `class` (string) - CSS classes for the wrapper element
+- `ssr` (boolean) - Whether to enable server-side rendering (default: `true`)
+
+## Phoenix events
+
+Phoenix LiveView events work inside Vue components rendered with `~VUE`:
+
+```elixir
+~VUE"""
+<script setup>
+import { ref } from 'vue'
+const diff = ref(1)
+</script>
+
+<template>
+  <button phx-click="save">Save</button>
+  <button phx-click="delete" phx-value-id="123">Delete</button>
+  <input phx-change="validate" />
+  <button phx-click="inc" :phx-value-diff="diff">Increment</button>
+</template>
+"""
+```
+
+## Complete example
+
+```elixir
+defmodule MyAppWeb.CounterLive do
+  use MyAppWeb, :live_view
+
+  def render(assigns) do
+    ~H"""
+    <div class="container">
+      <h1>Counter Demo</h1>
+      <%= render_counter(assigns) %>
+    </div>
+    """
+  end
+  
+  defp render_counter(assigns) do
+    ~VUE"""
+    <script setup lang="ts">
+    import { ref } from 'vue'
+    
+    // Props from LiveView
+    const props = defineProps<{
+      count: number
+    }>()
+    
+    // Local state
+    const diff = ref(1)
+    </script>
+    
+    <template>
+      <div class="counter">
+        <p>Current count: {{ props.count }}</p>
+        
+        <label>
+          Diff: {{ diff }}
+          <input v-model.number="diff" type="range" min="1" max="10" />
+        </label>
+        
+        <div class="buttons">
+          <button phx-click="inc" :phx-value-diff="diff">
+            Increase by {{ diff }}
+          </button>
+          <button phx-click="dec" :phx-value-diff="diff">
+            Decrease by {{ diff }}
+          </button>
+          <button phx-click="reset">Reset</button>
+        </div>
+      </div>
+    </template>
+    
+    <style scoped>
+    .counter {
+      padding: 2rem;
+      border: 1px solid #ccc;
+      border-radius: 0.5rem;
+    }
+    
+    .buttons {
+      display: flex;
+      gap: 0.5rem;
+      margin-top: 1rem;
+    }
+    
+    button {
+      padding: 0.5rem 1rem;
+      border-radius: 0.25rem;
+      background: #3b82f6;
+      color: white;
+      border: none;
+      cursor: pointer;
+    }
+    
+    button:hover {
+      background: #2563eb;
+    }
+    </style>
+    """
+  end
+
+  def mount(_params, _session, socket) do
+    {:ok, assign(socket, count: 0)}
+  end
+
+  def handle_event("inc", %{"diff" => value}, socket) do
+    {:noreply, update(socket, :count, &(&1 + value))}
+  end
+  
+  def handle_event("dec", %{"diff" => value}, socket) do
+    {:noreply, update(socket, :count, &(&1 - value))}
+  end
+  
+  def handle_event("reset", _params, socket) do
+    {:noreply, assign(socket, count: 0)}
+  end
+end
+```
+
+## VS Code syntax highlighting
+
+For syntax highlighting of the `~VUE` sigil in VS Code:
+
+- **VS Code Marketplace**: Install [LiveVue](https://marketplace.visualstudio.com/items?itemName=guilhermepsf23.livevue-sigil-highlighting) extension
+- **Manual installation**: Download VSIX from [releases](https://github.com/GuilhermePSF/live-vue-sigil-highlighting/releases) and install via `Extensions > Install from VSIX...`
+
+## When to use ~VUE vs .vue component
+
+### Use `~VUE` sigil when:
+
+- You have a simple, single-use component
+- The component is tightly coupled to a specific LiveView
+- You want to keep the component logic close to the LiveView code
+- You prefer an inline, self-contained approach
+
+### Use `.vue` component when:
+
+- You want to reuse the component across multiple LiveViews
+- The component is complex and benefits from separate file organization
+- You want better IDE support and tooling
+- You need to share components between different parts of the application
+- You prefer a more traditional Vue component structure
+
+## Migration from ~V
+
+The `~V` sigil is deprecated. To migrate to `~VUE`:
+
+```elixir
+# Old (deprecated)
+~V"""
+<template>...</template>
+"""
+
+# New
+~VUE"""
+<template>...</template>
+"""
+```
+
+The syntax and behavior are identical - only the sigil name changed.
+
+## Source
+
+See `lib/live_vue.ex:324` for the implementation.

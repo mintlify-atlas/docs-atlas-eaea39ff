@@ -1,80 +1,274 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quick start
+description: Create your first Vue component and integrate it with Phoenix LiveView
 ---
 
-## Get started in three steps
+Now that you have LiveVue installed, let's create your first Vue component and integrate it with LiveView.
 
-Get your documentation site running locally and make your first customization.
+## Creating your first component
 
-### Step 1: Set up your local environment
+Let's build a simple counter component that demonstrates the reactivity between Vue and LiveView.
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
+<Steps>
+  <Step title="Create the Vue component">
+    Create `assets/vue/Counter.vue`:
 
-### Step 2: Deploy your changes
+    ```vue Counter.vue
+    <script setup lang="ts">
+    import {ref} from "vue"
 
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+    // props are passed from LiveView
+    const props = defineProps<{count: number}>()
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+    // local state
+    const diff = ref(1)
+    </script>
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+    <template>
+      Current count: {{ props.count }}
+      <label>Diff: </label>
+      <input v-model.number="diff" type="range" min="1" max="10" />
 
-### Step 3: Go live
+      <button phx-click="inc" :phx-value-diff="diff">
+        Increase counter by {{ diff }}
+      </button>
+    </template>
+    ```
+  </Step>
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+  <Step title="Create the LiveView">
+    Create a LiveView to handle the counter state at `lib/my_app_web/live/counter_live.ex`:
+
+    ```elixir counter_live.ex
+    defmodule MyAppWeb.CounterLive do
+      use MyAppWeb, :live_view
+
+      def render(assigns) do
+        ~H"""
+        <.vue count={@count} v-component="Counter" v-socket={@socket} />
+        """
+      end
+
+      def mount(_params, _session, socket) do
+        {:ok, assign(socket, count: 0)}
+      end
+
+      def handle_event("inc", %{"diff" => value}, socket) do
+        {:noreply, update(socket, :count, &(&1 + value))}
+      end
+    end
+    ```
+  </Step>
+
+  <Step title="Add the route">
+    Add the route in your `router.ex`:
+
+    ```elixir router.ex
+    live "/counter", CounterLive
+    ```
+  </Step>
+
+  <Step title="Test it out">
+    Start your server and visit `http://localhost:4000/counter` to see your counter in action!
+
+    ```bash
+    mix phx.server
+    ```
+  </Step>
+</Steps>
+
+<Tip>
+If it's not working correctly, check out the [Troubleshooting guide](https://hexdocs.pm/live_vue/troubleshooting.html).
+</Tip>
+
+## Adding smooth transitions
+
+One of Vue's strengths is its built-in transition system. Let's enhance our counter with smooth animations and Tailwind styling.
+
+<Steps>
+  <Step title="Create animated component">
+    Create `assets/vue/AnimatedCounter.vue`:
+
+    ```vue AnimatedCounter.vue
+    <script setup lang="ts">
+    import {ref} from "vue"
+
+    const props = defineProps<{count: number}>()
+    const diff = ref(1)
+    </script>
+
+    <template>
+      <div class="space-y-4">
+        <div class="text-center">
+          <Transition name="count" mode="out-in">
+            <span
+              :key="props.count"
+              class="text-4xl font-bold text-blue-600"
+            >
+              {{ props.count }}
+            </span>
+          </Transition>
+        </div>
+
+        <div class="flex items-center gap-4">
+          <label class="text-sm font-medium">Diff:</label>
+          <input
+            v-model.number="diff"
+            type="range"
+            min="1"
+            max="10"
+            class="flex-1"
+          />
+          <span class="text-sm text-gray-600">{{ diff }}</span>
+        </div>
+
+        <button
+          phx-click="inc"
+          :phx-value-diff="diff"
+          class="w-full px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
+        >
+          Increase by {{ diff }}
+        </button>
+      </div>
+    </template>
+
+    <style scoped>
+    .count-enter-active,
+    .count-leave-active {
+      transition: all 0.3s ease;
+    }
+
+    .count-enter-from {
+      opacity: 0;
+      transform: scale(0.8) translateY(-10px);
+    }
+
+    .count-leave-to {
+      opacity: 0;
+      transform: scale(1.2) translateY(10px);
+    }
+    </style>
+    ```
+  </Step>
+
+  <Step title="Update your LiveView">
+    Update your LiveView to use the animated version:
+
+    ```elixir counter_live.ex
+    def render(assigns) do
+      ~H"""
+      <div class="max-w-sm mx-auto mt-8 p-6 bg-white rounded-lg shadow-lg">
+        <h1 class="text-2xl font-bold mb-6 text-center">Animated Counter</h1>
+        <.vue count={@count} v-component="AnimatedCounter" v-socket={@socket} />
+      </div>
+      """
+    end
+    ```
+  </Step>
+</Steps>
+
+Now your counter will smoothly animate when the value changes! This showcases how Vue's transition system can add polish to your LiveView apps without any server-side complexity.
+
+## Key concepts
+
+This example demonstrates several important LiveVue features:
+
+<CardGroup cols={2}>
+  <Card title="Props flow" icon="arrow-right" iconType="solid">
+    LiveView sends the `count` value to Vue as a prop
+  </Card>
+  <Card title="Event handling" icon="bolt" iconType="solid">
+    Vue emits events with `phx-click` and `phx-value-*` attributes
+  </Card>
+  <Card title="State management" icon="database" iconType="solid">
+    LiveView maintains the source of truth (the counter value)
+  </Card>
+  <Card title="Local UI state" icon="sliders" iconType="solid">
+    Vue maintains the slider value locally without server involvement
+  </Card>
+  <Card title="Transitions" icon="wand-magic-sparkles" iconType="solid">
+    Vue handles smooth animations purely on the client side
+  </Card>
+  <Card title="Efficient updates" icon="gauge-high" iconType="solid">
+    Only changed data is sent over WebSocket using JSON Patch
+  </Card>
+</CardGroup>
+
+## Working with custom structs
+
+When you start passing more complex data structures as props, you'll need to implement the `LiveVue.Encoder` protocol:
+
+```elixir
+# For any custom structs you want to pass as props
+defmodule User do
+  @derive LiveVue.Encoder
+  defstruct [:name, :email, :age]
+end
+
+# Use in your LiveView
+def render(assigns) do
+  ~H"""
+  <.vue user={@current_user} v-component="UserProfile" v-socket={@socket} />
+  """
+end
+```
+
+This protocol ensures that:
+
+- Only specified fields are sent to the client
+- Sensitive data is protected from accidental exposure
+- Props can be efficiently diffed for optimal performance
+
+<Note>
+For more details, see the [Component Reference](https://hexdocs.pm/live_vue/component_reference.html#custom-structs-with-livevue-encoder) documentation.
+</Note>
+
+## Development tips
+
+<Tip>
+**Good to know:**
+
+- Install the [Vue DevTools browser extension](https://devtools.vuejs.org/getting-started/installation) for debugging
+- In development, LiveVue enables Hot Module Replacement for instant component updates
+- Structure your app with LiveView managing application state and Vue handling UI interactions
+- For complex UIs with lots of local state, prefer Vue components over LiveView hooks
+</Tip>
 
 ## Next steps
 
-Now that you have your docs running, explore these key features:
+Now that you have your first component working, explore:
 
 <CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
+  <Card
+    title="Live examples"
+    icon="window"
+    iconType="solid"
+    href="https://livevue.skalecki.dev"
+  >
+    Interactive demos to see LiveVue in action
+  </Card>
+  <Card
+    title="Basic usage"
+    icon="book"
+    iconType="solid"
+    href="https://hexdocs.pm/live_vue/basic_usage.html"
+  >
+    Learn more patterns and the ~VUE sigil
+  </Card>
+  <Card
+    title="Component reference"
+    icon="code"
+    iconType="solid"
+    href="https://hexdocs.pm/live_vue/component_reference.html"
+  >
+    Complete syntax documentation
+  </Card>
+  <Card
+    title="FAQ"
+    icon="circle-question"
+    iconType="solid"
+    href="https://hexdocs.pm/live_vue/faq.html"
+  >
+    Common questions and troubleshooting
+  </Card>
 </CardGroup>
-
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>

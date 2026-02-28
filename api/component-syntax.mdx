@@ -1,0 +1,238 @@
+---
+title: vue/1 component
+description: Complete syntax reference for the .vue component function
+---
+
+The `.vue` component is the primary way to render Vue components within Phoenix LiveView templates.
+
+## Basic syntax
+
+```elixir
+<.vue
+  v-component="ComponentName"
+  v-socket={@socket}
+  prop_name={@value}
+/>
+```
+
+## Required attributes
+
+<ParamField path="v-component" type="string" required>
+  Name of the Vue component to render (e.g., "Counter", "admin/Dashboard").
+  
+  The value is directly passed to the `resolve` function of the `createLiveVue` instance. It should return a Vue component or a promise that resolves to a Vue component. In a standard setup, you can find this in `assets/vue/index.js`.
+</ParamField>
+
+<ParamField path="v-socket" type="Phoenix.LiveView.Socket" required>
+  LiveView socket. Must be provided when rendering inside a LiveView.
+  
+  ```elixir
+  <.vue v-component="Counter" v-socket={@socket} />
+  ```
+</ParamField>
+
+## Optional attributes
+
+<ParamField path="id" type="string">
+  Explicit ID for the wrapper component. If not provided, a random one will be generated.
+  
+  Useful to keep ID consistent in development.
+  
+  ```elixir
+  <.vue v-component="Counter" v-socket={@socket} id="vue-1" />
+  ```
+</ParamField>
+
+<ParamField path="class" type="string">
+  CSS class(es) to apply to the Vue component wrapper.
+  
+  ```elixir
+  <.vue 
+    v-component="Counter" 
+    v-socket={@socket} 
+    class="my-class another-class" 
+  />
+  ```
+</ParamField>
+
+<ParamField path="v-ssr" type="boolean" default="true">
+  Whether to render the component on the server. Defaults to the value set in config.
+  
+  ```elixir
+  # Disable SSR for this component
+  <.vue v-component="ClientOnly" v-socket={@socket} v-ssr={false} />
+  
+  # Enable SSR explicitly
+  <.vue v-component="HeavyComponent" v-socket={@socket} v-ssr={true} />
+  ```
+</ParamField>
+
+<ParamField path="v-diff" type="boolean" default="true">
+  Whether to enable props diffing for this component. When enabled, only changed props are sent over the WebSocket.
+  
+  ```elixir
+  # Disable diffing (send full props every time)
+  <.vue v-component="TestComponent" v-socket={@socket} v-diff={false} />
+  ```
+</ParamField>
+
+## Event handlers
+
+<ParamField path="v-on:*" type="Phoenix.LiveView.JS">
+  Vue event handlers can be attached using the `v-on:` prefix followed by the event name.
+  
+  ```elixir
+  <.vue
+    v-component="Counter"
+    v-socket={@socket}
+    count={@count}
+    v-on:increment={JS.push("inc")}
+    v-on:decrement={JS.push("dec")}
+    v-on:reset={JS.push("reset")}
+  />
+  ```
+  
+  When using `JS.push()` without a value, the emit payload is automatically used:
+  
+  ```html
+  <!-- Vue component -->
+  <button @click="$emit('save', { data: formData })">Save</button>
+  ```
+  
+  ```elixir
+  <!-- LiveView template -->
+  <.vue v-on:save={JS.push("save")} v-socket={@socket} />
+  <!-- Equivalent to: JS.push("save", data: formData) -->
+  ```
+</ParamField>
+
+## Props and slots
+
+All other attributes not listed above are passed as props to the Vue component.
+
+### Props
+
+Props are JSON-encoded and sent to the Vue component. You need to provide serializable types or implement the `Jason.Encoder` protocol for custom types.
+
+```elixir
+<.vue
+  v-component="UserProfile"
+  v-socket={@socket}
+  user={@user}
+  settings={@settings}
+  is_admin={@current_user.admin?}
+  count={42}
+  items={@list}
+/>
+```
+
+### Slots
+
+Slots can be passed as regular Phoenix slots.
+
+```elixir
+<.vue v-component="Modal" v-socket={@socket}>
+  <:header>
+    <h2>Modal Title</h2>
+  </:header>
+  
+  <p>Modal content goes here</p>
+  
+  <:footer>
+    <button>Cancel</button>
+    <button>Save</button>
+  </:footer>
+</.vue>
+```
+
+## Examples
+
+### Basic component
+
+```elixir
+<.vue
+  v-component="Counter"
+  v-socket={@socket}
+  count={@count}
+/>
+```
+
+### Component with events
+
+```elixir
+<.vue
+  v-component="Counter"
+  v-socket={@socket}
+  count={@count}
+  v-on:increment={JS.push("inc")}
+  v-on:decrement={JS.push("dec")}
+/>
+```
+
+### Component with complex props
+
+```elixir
+<.vue
+  v-component="UserDashboard"
+  v-socket={@socket}
+  user={%{
+    id: 1,
+    name: "John Doe",
+    email: "john@example.com",
+    preferences: %{
+      theme: "dark",
+      notifications: true
+    }
+  }}
+  permissions={["read", "write", "admin"]}
+/>
+```
+
+### Component with slots
+
+```elixir
+<.vue v-component="Card" v-socket={@socket}>
+  <:default>
+    <p>Default slot content</p>
+  </:default>
+  <:named>
+    <p>Named slot content</p>
+  </:named>
+</.vue>
+```
+
+### Nested component path
+
+```elixir
+<.vue
+  v-component="admin/Dashboard"
+  v-socket={@socket}
+  stats={@stats}
+/>
+```
+
+### Component with custom styling
+
+```elixir
+<.vue
+  v-component="Widget"
+  v-socket={@socket}
+  class="custom-widget shadow-lg"
+  id="main-widget"
+/>
+```
+
+### Component with SSR disabled
+
+```elixir
+<.vue
+  v-component="InteractiveChart"
+  v-socket={@socket}
+  v-ssr={false}
+  data={@chart_data}
+/>
+```
+
+## Source
+
+See `lib/live_vue.ex:82` for the complete implementation.

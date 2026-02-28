@@ -1,0 +1,204 @@
+---
+title: Server-side rendering
+description: Modules for rendering Vue components on the server
+---
+
+LiveVue provides server-side rendering (SSR) capabilities through the `LiveVue.SSR` behaviour and two built-in implementations: `LiveVue.SSR.NodeJS` and `LiveVue.SSR.ViteJS`.
+
+## LiveVue.SSR
+
+A behaviour for rendering Vue components server-side. This module defines the interface that SSR implementations must follow and provides the main `render/3` function.
+
+### Configuration
+
+To define a custom renderer, change the application config in `config.exs`:
+
+```elixir
+config :live_vue, ssr_module: MyCustomSSRModule
+```
+
+### render/3
+
+Renders a Vue component server-side.
+
+```elixir
+render(name, props, slots)
+```
+
+<ParamField path="name" type="String.t()" required>
+  The name of the Vue component to render.
+</ParamField>
+
+<ParamField path="props" type="map" required>
+  A map of props to pass to the component. Keys can be strings or atoms.
+</ParamField>
+
+<ParamField path="slots" type="map" required>
+  A map of slots to pass to the component. Keys can be strings or atoms.
+</ParamField>
+
+<ResponseField name="return" type="map">
+  A render response with the following shape:
+  
+  ```elixir
+  %{
+    html: "<div>...</div>",
+    preloadLinks: "<link rel='modulepreload' ...>"
+  }
+  ```
+</ResponseField>
+
+### Telemetry
+
+The module exposes a telemetry span for each render under the key `[:live_vue, :ssr]`. The metadata includes:
+
+- `component` - Component name
+- `props` - Props passed to the component  
+- `slots` - Slots passed to the component
+
+## LiveVue.SSR.NodeJS
+
+Implements SSR by using a Node.js subprocess. This is the recommended approach for production deployments.
+
+### How it works
+
+Under the hood, it invokes the `render` function exposed by the `server.js` file. You can see how `server.js` is created by looking at the `assets.deploy` command and `package.json` build-server script.
+
+### Configuration
+
+Add the NodeJS supervisor to your `application.ex`:
+
+```elixir
+children = [
+  # ...
+  {NodeJS.Supervisor, [path: LiveVue.SSR.NodeJS.server_path(), pool_size: 4]}
+]
+```
+
+Optionally configure the SSR file path in `config.exs`:
+
+```elixir
+config :live_vue, ssr_filepath: "./static/server.mjs"
+```
+
+### render/3
+
+Renders a Vue component using Node.js.
+
+```elixir
+render(name, props, slots)
+```
+
+<ParamField path="name" type="String.t()" required>
+  The name of the Vue component to render.
+</ParamField>
+
+<ParamField path="props" type="map" required>
+  Props to pass to the component.
+</ParamField>
+
+<ParamField path="slots" type="map" required>
+  Slots to pass to the component.
+</ParamField>
+
+<ResponseField name="return" type="String.t()">
+  Returns the rendered HTML as a binary string.
+</ResponseField>
+
+<Warning>
+  If NodeJS is not configured, this function raises `LiveVue.SSR.NotConfigured`.
+</Warning>
+
+### server_path/0
+
+Returns the path to the Node.js server directory.
+
+```elixir
+server_path()
+```
+
+<ResponseField name="return" type="String.t()">
+  Returns the application's `priv` directory path.
+</ResponseField>
+
+## LiveVue.SSR.ViteJS
+
+Implements SSR by making HTTP requests to a Vite development server. This is the recommended approach for development.
+
+### How it works
+
+Makes a POST request to `http://{:vite_host}/ssr_render`. The `ssr_render` endpoint is implemented as a Vite plugin.
+
+### Configuration
+
+Add the LiveVue plugin to your `vite.config.js`:
+
+```javascript
+import liveVuePlugin from "live_vue/vitePlugin"
+import vue from "@vitejs/plugin-vue"
+
+export default {
+  publicDir: "static",
+  plugins: [vue(), liveVuePlugin()],
+  // ...
+}
+```
+
+Configure the Vite host in `config/dev.exs`:
+
+```elixir
+config :live_vue, vite_host: "http://localhost:5173"
+```
+
+### render/3
+
+Renders a Vue component using Vite's dev server.
+
+```elixir
+render(name, props, slots)
+```
+
+<ParamField path="name" type="String.t()" required>
+  The name of the Vue component to render.
+</ParamField>
+
+<ParamField path="props" type="map" required>
+  Props to pass to the component.
+</ParamField>
+
+<ParamField path="slots" type="map" required>
+  Slots to pass to the component.
+</ParamField>
+
+<ResponseField name="return" type="String.t() | {:error, String.t()}">
+  Returns the rendered HTML as a binary string, or an error tuple with a descriptive message.
+</ResponseField>
+
+Error responses include:
+- Connection failures (Vite not running)
+- 500 errors with stack traces from Vite
+- Unexpected HTTP status codes
+
+<Warning>
+  If Vite host is not configured, this function raises `LiveVue.SSR.NotConfigured`.
+</Warning>
+
+### vite_path/1
+
+A handy utility for constructing paths relative to the Vite host.
+
+```elixir
+vite_path(path)
+```
+
+<ParamField path="path" type="String.t()" required>
+  The path to append to the Vite host URL.
+</ParamField>
+
+<ResponseField name="return" type="String.t()">
+  Returns the full URL by joining the configured Vite host with the provided path.
+</ResponseField>
+
+## Exception: LiveVue.SSR.NotConfigured
+
+Raised when SSR is attempted but the required configuration is missing. The exception message contains specific instructions for fixing the configuration issue.
