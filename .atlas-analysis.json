@@ -1,0 +1,106 @@
+{
+  "projectType": "framework",
+  "projectName": "LiveVue",
+  "projectDescription": "End-to-end reactivity for Phoenix LiveView and Vue.js with seamless server-client integration",
+  "theme": "palm",
+  "primaryColor": "#42b883",
+  "lightColor": "#42d392",
+  "darkColor": "#33a06f",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "installation",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Core Usage",
+            "pages": [
+              "guides/basic-usage",
+              "guides/forms",
+              "guides/configuration"
+            ]
+          },
+          {
+            "group": "Advanced Topics",
+            "pages": [
+              "guides/architecture",
+              "guides/testing",
+              "guides/deployment"
+            ]
+          },
+          {
+            "group": "Help & Resources",
+            "pages": [
+              "guides/faq",
+              "guides/troubleshooting",
+              "guides/comparison"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Elixir API",
+            "pages": [
+              "api/live-vue",
+              "api/components",
+              "api/ssr"
+            ]
+          },
+          {
+            "group": "Client-Side API",
+            "pages": [
+              "api/composables",
+              "api/live-form",
+              "api/live-upload"
+            ]
+          },
+          {
+            "group": "Component Reference",
+            "pages": [
+              "api/component-syntax",
+              "api/vue-sigil"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "End-to-end reactivity between Phoenix LiveView and Vue.js",
+    "Server-side rendering (SSR) for Vue components",
+    "Efficient props diffing with JSON Patch",
+    "~VUE sigil as alternative LiveView DSL",
+    "Phoenix Streams support with efficient patches",
+    "Comprehensive form handling with useLiveForm",
+    "File upload composable with useLiveUpload",
+    "One-line installation via Igniter",
+    "Lazy-loading Vue components",
+    "Tailwind CSS support"
+  ],
+  "publicApiSurface": [
+    "LiveVue.vue/1 - Phoenix component for rendering Vue components",
+    "~VUE sigil - Alternative DSL for Vue component rendering",
+    "createLiveVue() - Initialize LiveVue app",
+    "getHooks() - Get Phoenix LiveView hooks",
+    "useLiveVue() - Access LiveView instance from Vue",
+    "useLiveEvent() - Listen for server-pushed events",
+    "useLiveNavigation() - Programmatic navigation",
+    "useLiveForm() - Server-side form validation",
+    "useLiveUpload() - File upload integration",
+    "useEventReply() - Handle reply responses",
+    "useLiveConnection() - Connection status",
+    "useField() - Individual form field",
+    "useArrayField() - Array form field",
+    "Link component - Navigation component"
+  ]
+}
